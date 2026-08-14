@@ -993,7 +993,7 @@ function Timeline({ streams, segs, need, minAge, maxAge }) {
   const ticks = [];
   for (let a = Math.ceil(minAge / 5) * 5; a < maxAge; a += 5) ticks.push(a);
 
-  const peak = Math.max(need, ...segs.map((g) => g.sum), 1);
+  const peak = Math.max(need, ...segs.map((g) => g.sum), 1) * 1.2; // 위쪽 여백 확보
   const rows = streams.filter((s) => s.monthly > 0).sort((a, b) => b.n - a.n);
   const LEFT = 46, RIGHT = 58;
 
@@ -1032,8 +1032,8 @@ function Timeline({ streams, segs, need, minAge, maxAge }) {
       })}
 
       {/* 합계 흐름 · 필요생활비 */}
-      <div className="flex items-stretch mt-2.5">
-        <span className="text-[10.5px] shrink-0 pt-9" style={{ width: LEFT, color: C.dim }}>합계</span>
+      <div className="flex items-stretch mt-4">
+        <span className="text-[10.5px] shrink-0 pt-10" style={{ width: LEFT, color: C.dim }}>합계</span>
         <div className="relative flex-1" style={{ height: 78 }}>
           <div className="absolute inset-0 flex items-end">
             {segs.map((g, i) => {
@@ -1045,7 +1045,7 @@ function Timeline({ streams, segs, need, minAge, maxAge }) {
                   <div className="absolute bottom-0 left-0 right-0"
                     style={{ height: h + "%", background: ok ? "rgba(18,134,74,0.18)" : "rgba(217,45,69,0.15)", borderTop: "2px solid " + (ok ? C.ok : C.warn), transition: "height 350ms ease" }} />
                   <span className="absolute left-0 right-0 text-center text-[8.5px] whitespace-nowrap"
-                    style={{ bottom: "calc(" + h + "% + 3px)", color: ok ? C.ok : C.warn, fontFamily: FONT_NUM }}>
+                    style={{ bottom: "calc(" + Math.min(h, 84) + "% + 4px)", color: ok ? C.ok : C.warn, fontFamily: FONT_NUM }}>
                     {w > 13 ? big(g.sum) : ""}
                   </span>
                 </div>
@@ -1056,7 +1056,7 @@ function Timeline({ streams, segs, need, minAge, maxAge }) {
             <div className="absolute left-0 right-0" style={{ bottom: (need / peak) * 100 + "%", borderTop: "1px dashed " + C.warn }} />
           )}
         </div>
-        <span className="text-[9.5px] shrink-0 text-right pt-9 leading-tight" style={{ width: RIGHT, color: C.warn }}>
+        <span className="text-[9.5px] shrink-0 text-right pt-10 leading-tight" style={{ width: RIGHT, color: C.warn }}>
           필요<br />{big(need)}
         </span>
       </div>
@@ -1640,7 +1640,7 @@ const api = {
   },
 };
 
-const BUILD = "2026-08-14 · 타임라인";
+const BUILD = "2026-08-14 · 타임라인 b";
 
 const NP_DEFAULTS = { aValue: "3193511", cap: "6590000", floor: "410000", growth: "3.92" };
 
