@@ -319,46 +319,81 @@ function calcRP(rp) {
 }
 
 /* ── 퇴직소득세 (소득세법 시행규칙 별지 제24호서식(2)) ───── */
+// 관리자 페이지에서 수정하는 값들. cut 은 %, 나머지는 원 단위.
+const TAX_DEFAULTS = {
+  service: [                                   // 근속연수공제
+    { upto: 5,  base: 0,        per: 1000000 },
+    { upto: 10, base: 5000000,  per: 2000000 },
+    { upto: 20, base: 15000000, per: 2500000 },
+    { upto: 0,  base: 40000000, per: 3000000 },   // upto 0 = 초과 구간
+  ],
+  conv: [                                      // 환산급여공제
+    { upto: 8000000,   base: 0,         rate: 100 },
+    { upto: 70000000,  base: 8000000,   rate: 60 },
+    { upto: 100000000, base: 45200000,  rate: 55 },
+    { upto: 300000000, base: 61700000,  rate: 45 },
+    { upto: 0,         base: 151700000, rate: 35 },
+  ],
+  brackets: [                                  // 기본세율
+    { upto: 14000000,   rate: 6,  deduct: 0 },
+    { upto: 50000000,   rate: 15, deduct: 1260000 },
+    { upto: 88000000,   rate: 24, deduct: 5760000 },
+    { upto: 150000000,  rate: 35, deduct: 15440000 },
+    { upto: 300000000,  rate: 38, deduct: 19940000 },
+    { upto: 500000000,  rate: 40, deduct: 25940000 },
+    { upto: 1000000000, rate: 42, deduct: 35940000 },
+    { upto: 0,          rate: 45, deduct: 65940000 },
+  ],
+  cut10: 30,   // 연금수령 1~10년차 감면율
+  cut20: 40,   // 11~20년차
+  cut21: 50,   // 21년차 이상
+  local: 10,   // 지방소득세율
+};
+
+const pick = (list, x) => list.find((b) => b.upto > 0 && x <= b.upto) || list[list.length - 1];
+
 // 기본세율 (과세표준 → 산출세액)
-function baseTax(x) {
-  if (x <= 14000000) return x * 0.06;
-  if (x <= 50000000) return x * 0.15 - 1260000;
-  if (x <= 88000000) return x * 0.24 - 5760000;
-  if (x <= 150000000) return x * 0.35 - 15440000;
-  if (x <= 300000000) return x * 0.38 - 19940000;
-  if (x <= 500000000) return x * 0.4 - 25940000;
-  if (x <= 1000000000) return x * 0.42 - 35940000;
-  return x * 0.45 - 65940000;
+function baseTax(x, P) {
+  const b = pick(P.brackets, x);
+  return (x * b.rate) / 100 - b.deduct;
 }
 // 근속연수공제
-function serviceDeduction(y) {
-  if (y <= 5) return y * 1000000;
-  if (y <= 10) return 5000000 + (y - 5) * 2000000;
-  if (y <= 20) return 15000000 + (y - 10) * 2500000;
-  return 40000000 + (y - 20) * 3000000;
+function serviceDeduction(y, P) {
+  const list = P.service;
+  const i = list.findIndex((b) => b.upto > 0 && y <= b.upto);
+  const b = i >= 0 ? list[i] : list[list.length - 1];
+  const from = i > 0 ? list[i - 1].upto : (i === 0 ? 0 : list[list.length - 2].upto);
+  return b.base + (y - from) * b.per;
 }
 // 환산급여별 공제
-function convDeduction(c) {
-  if (c <= 8000000) return c;
-  if (c <= 70000000) return 8000000 + (c - 8000000) * 0.6;
-  if (c <= 100000000) return 45200000 + (c - 70000000) * 0.55;
-  if (c <= 300000000) return 61700000 + (c - 100000000) * 0.45;
-  return 151700000 + (c - 300000000) * 0.35;
+function convDeduction(c, P) {
+  const list = P.conv;
+  const i = list.findIndex((b) => b.upto > 0 && c <= b.upto);
+  const b = i >= 0 ? list[i] : list[list.length - 1];
+  const from = i > 0 ? list[i - 1].upto : (i === 0 ? 0 : list[list.length - 2].upto);
+  return b.base + ((c - from) * b.rate) / 100;
 }
 
-const sDedRule = (y) =>
-  y <= 5 ? "5년 이하 · 1년당 100만" :
-  y <= 10 ? "6~10년 · 500만 + 초과 1년당 200만" :
-  y <= 20 ? "11~20년 · 1,500만 + 초과 1년당 250만" :
-  "20년 초과 · 4,000만 + 초과 1년당 300만";
-const cDedRule = (c) =>
-  c <= 8000000 ? "800만 이하 · 전액" :
-  c <= 70000000 ? "800만~7천만 · 800만 + 초과 60%" :
-  c <= 100000000 ? "7천만~1억 · 4,520만 + 초과 55%" :
-  c <= 300000000 ? "1억~3억 · 6,170만 + 초과 45%" :
-  "3억 초과 · 1억 5,170만 + 초과 35%";
+const won만 = (n) => (n >= 100000000 ? (n / 100000000).toFixed(2).replace(/\.?0+$/, "") + "억" : Math.round(n / 10000).toLocaleString() + "만");
+const sDedRule = (y, P) => {
+  const list = P.service;
+  const i = list.findIndex((b) => b.upto > 0 && y <= b.upto);
+  const b = i >= 0 ? list[i] : list[list.length - 1];
+  const from = i > 0 ? list[i - 1].upto : (i === 0 ? 0 : list[list.length - 2].upto);
+  return (i === 0 ? b.upto + "년 이하" : from + "년 초과") + " · " +
+    (b.base > 0 ? won만(b.base) + " + 초과 " : "") + "1년당 " + won만(b.per);
+};
+const cDedRule = (c, P) => {
+  const list = P.conv;
+  const i = list.findIndex((b) => b.upto > 0 && c <= b.upto);
+  const b = i >= 0 ? list[i] : list[list.length - 1];
+  const from = i > 0 ? list[i - 1].upto : (i === 0 ? 0 : list[list.length - 2].upto);
+  return (i === 0 ? won만(b.upto) + " 이하 · 전액" :
+    won만(from) + " 초과 · " + won만(b.base) + " + 초과 " + b.rate + "%");
+};
 
-function calcTax(t) {
+function calcTax(t, P) {
+  P = P || TAX_DEFAULTS;
   const s = D(t.startDate), e = D(t.endDate);
   const pay = toNum(t.pay);
   const nontax = toNum(t.nontax);
@@ -368,34 +403,36 @@ function calcTax(t) {
   const adj = Math.max(0, months - toNum(t.exclude) + toNum(t.add));
   const years = adj > 0 ? Math.ceil(adj / 12) : 0; // (26) 근속연수 — 1년 미만 올림
 
-  const sDed = years > 0 ? Math.min(serviceDeduction(years), taxable) : 0; // (28)
-  const conv = years > 0 ? Math.floor(((taxable - sDed) * 12) / years) : 0; // (29) 환산급여
-  const cDed = Math.floor(convDeduction(conv)); // (30)
-  const base = Math.max(0, conv - cDed); // (31) 과세표준
-  const convTax = Math.floor(baseTax(base)); // (32) 환산산출세액
-  const gross = Math.floor((convTax / 12) * years); // (33) 산출세액
-  const report = Math.max(0, gross - toNum(t.prepaid) - toNum(t.credit)); // (36) 신고대상세액
+  const sDed = years > 0 ? Math.min(serviceDeduction(years, P), taxable) : 0; // (28)
+  const conv = years > 0 ? Math.floor(((taxable - sDed) * 12) / years) : 0;   // (29) 환산급여
+  const cDed = Math.floor(convDeduction(conv, P));                            // (30)
+  const base = Math.max(0, conv - cDed);                                      // (31) 과세표준
+  const convTax = Math.floor(baseTax(base, P));                               // (32) 환산산출세액
+  const gross = Math.floor((convTax / 12) * years);                           // (33) 산출세액
+  const report = Math.max(0, gross - toNum(t.prepaid) - toNum(t.credit));     // (36) 신고대상세액
 
   const irpAmt = Math.min(toNum(t.irpAmount), taxable);
   const deferred = taxable > 0 ? Math.floor((report * irpAmt) / taxable) : 0; // (40) 이연퇴직소득세
-  const withhold = Math.max(0, report - deferred); // (44) 차감원천징수세액
-  const local = Math.floor(withhold / 10); // 지방소득세 10%
-  const reportLocal = Math.floor(report / 10);
+  const withhold = Math.max(0, report - deferred);                            // (44) 차감원천징수세액
+  const local = Math.floor((withhold * P.local) / 100);
+  const reportLocal = Math.floor((report * P.local) / 100);
 
   return {
     taxable, months, adj, years, sDed, conv, cDed, base, convTax, gross, report,
-    sDedRule: sDedRule(years), cDedRule: cDedRule(conv),
+    sDedRule: sDedRule(years, P), cDedRule: cDedRule(conv, P),
     irpAmt, deferred, withhold, local, reportLocal,
     total: withhold + local,
     effRate: taxable > 0 ? (report + reportLocal) / taxable : 0,
-    saved: Math.floor(deferred * 0.3), // 연금 10년 이내 수령 시 30% 감면
+    saved: Math.floor((deferred * P.cut10) / 100),
+    P,
   };
 }
 
 /* ── 연금수령연차 (소득세법 시행령 제40조의2) ─────────────── */
 const PIVOT_2013 = new Date("2013-03-01T00:00:00");
 
-function calcAnnuityYear(a, birthStr, refYear) {
+function calcAnnuityYear(a, birthStr, refYear, P) {
+  P = P || TAX_DEFAULTS;
   const open = D(a.open), start = D(a.start), birth = D(birthStr);
   const rpJoin = D(a.rpJoin); // 퇴직연금(DB/DC) 제도 가입일
   const year = Math.round(toNum(refYear));
@@ -421,7 +458,7 @@ function calcAnnuityYear(a, birthStr, refYear) {
   const value = toNum(a.value);
   const noLimit = nth >= 11;
   const limit = nth >= 1 && !noLimit ? (value / (11 - nth)) * 1.2 : 0;
-  const cut = nth <= 10 ? 30 : nth <= 20 ? 40 : 50;       // 퇴직소득세 감면율
+  const cut = nth <= 10 ? P.cut10 : nth <= 20 ? P.cut20 : P.cut21;  // 퇴직소득세 감면율
 
   return {
     firstOK, eff, startYear, base, nth, value, noLimit, limit, cut, judge, bySeverance,
@@ -1319,8 +1356,8 @@ function ScreenChat({ log, setLog, pending, clearPending }) {
 
 
 /* ── 화면 5 · 퇴직소득세 계산기 ──────────────────────────── */
-function ScreenTax({ tax, set, rp, onAsk }) {
-  const r = calcTax(tax);
+function ScreenTax({ tax, set, rp, onAsk, P }) {
+  const r = calcTax(tax, P);
   const pull = () => {
     const lump = Math.round(calcRP(rp).lump);
     set({
@@ -1393,11 +1430,12 @@ function ScreenTax({ tax, set, rp, onAsk }) {
         )}
         <Row k="이연퇴직소득세" v={won(r.deferred)} sub="신고대상세액 × 입금액 ÷ 과세대상 퇴직급여" color={C.f3} />
         <Row k="지금 낼 소득세" v={won(r.withhold)} strong color={r.withhold === 0 ? C.ok : C.text} />
-        <Row k="지방소득세" v={won(r.local)} sub="소득세의 10%" />
+        <Row k="지방소득세" v={won(r.local)} sub={"소득세의 " + r.P.local + "%"} />
         <Row k="지금 낼 세금 합계" v={won(r.total)} strong color={r.total === 0 ? C.ok : C.warn} />
         <Note>
-          이연된 세금은 나중에 연금으로 받을 때 나눠 내요. 이때 수령 연차에 따라 10년 이내는 30%, 11~20년차는 40%,
-          21년차부터는 50%를 깎아줘요. 10년에 걸쳐 받으면 약 {won(r.saved)}을 아끼고, 오래 나눠 받을수록 감면폭이 커져요.
+          이연된 세금은 나중에 연금으로 받을 때 나눠 내요. 이때 수령 연차에 따라 10년 이내는 {r.P.cut10}%,
+          11~20년차는 {r.P.cut20}%, 21년차부터는 {r.P.cut21}%를 깎아줘요. 10년에 걸쳐 받으면 약 {won(r.saved)}을 아끼고,
+          오래 나눠 받을수록 감면폭이 커져요.
         </Note>
       </Card>
 
@@ -1408,10 +1446,10 @@ function ScreenTax({ tax, set, rp, onAsk }) {
 
 
 /* ── 화면 6 · 연금수령연차 ───────────────────────────────── */
-function ScreenAnnuity({ tax, set, setAnn, np, onAsk }) {
+function ScreenAnnuity({ tax, set, setAnn, np, onAsk, P }) {
   const birth = tax.birth || np.birth;
   const a = tax.ann;
-  const y = calcAnnuityYear(a, birth, tax.year);
+  const y = calcAnnuityYear(a, birth, tax.year, P);
   return (
     <div>
       <ScreenHead eyebrow="STEP 6" title="연금수령연차" desc="몇 년차인지 세어 수령한도와 감면율을 알려줘요" color={C.f3} />
@@ -1567,13 +1605,21 @@ const api = {
     const { error } = await supabase.rpc("fn_admin_reset_pw", { p_admin_pw: adminPw, p_emp: empNo });
     return !error;
   },
+  async getTax() {
+    const { data } = await supabase.rpc("fn_get_tax");
+    return data || null;
+  },
+  async saveTax(adminPw, value) {
+    const { error } = await supabase.rpc("fn_admin_save_tax", { p_admin_pw: adminPw, p_value: value });
+    return !error;
+  },
   async saveNp(adminPw, value) {
     const { error } = await supabase.rpc("fn_admin_save_np", { p_admin_pw: adminPw, p_value: value });
     return !error;
   },
 };
 
-const BUILD = "2026-08-14 · 아이콘";
+const BUILD = "2026-08-14 · 세율설정";
 
 const NP_DEFAULTS = { aValue: "3193511", cap: "6590000", floor: "410000", growth: "3.92" };
 
@@ -1776,12 +1822,17 @@ function AdminScreen({ adminPw, initialRows, onExit }) {
   const [month, setMonth] = useState(monthKey(new Date()));
   const [days, setDays] = useState(null);
   const [split, setSplit] = useState("dept");   // dept | role
+  const [page, setPage] = useState("usage");   // usage | np | tax
+  const [tax, setTax] = useState(TAX_DEFAULTS);
+  const [taxMsg, setTaxMsg] = useState("");
   const [open, setOpen] = useState({ sales: true, staff: false });
 
   useEffect(() => {
     (async () => {
       const c = await api.getNp();
       if (c) setCfg({ ...NP_DEFAULTS, ...c });
+      const tx = await api.getTax();
+      if (tx) setTax({ ...TAX_DEFAULTS, ...tx });
       if (!initialRows) setRows(await api.adminUsers(adminPw));
     })();
   }, []);
@@ -1797,6 +1848,14 @@ function AdminScreen({ adminPw, initialRows, onExit }) {
       : await api.resetPw(adminPw, u.empNo);
     if (ok) setRows((r) => r.map((x) => (x.empNo === u.empNo ? { ...x, ...patch } : x)));
   };
+
+  const saveTax = async () => {
+    const ok = await api.saveTax(adminPw, tax);
+    setTaxMsg(ok ? "저장했어요. 계산기에 바로 반영됩니다." : "저장에 실패했어요.");
+    setTimeout(() => setTaxMsg(""), 3000);
+  };
+  const editRow = (group, i, field, v) =>
+    setTax((t) => ({ ...t, [group]: t[group].map((r, k) => (k === i ? { ...r, [field]: toNum(v) } : r)) }));
 
   const saveCfg = async () => {
     const ok = await api.saveNp(adminPw, cfg);
@@ -1848,6 +1907,16 @@ function AdminScreen({ adminPw, initialRows, onExit }) {
         </button>
       </header>
 
+      <div className="flex gap-1.5 mb-4">
+        {[["usage", "활용률·계정"], ["np", "국민연금"], ["tax", "퇴직소득세"]].map(([k, label]) => (
+          <button key={k} onClick={() => setPage(k)} className="flex-1 py-2 rounded-lg text-[12.5px]"
+            style={page === k ? { background: C.f1, color: "#fff" } : { border: "1px solid " + C.line2, color: C.dim }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {page === "usage" && (<>
       <Card title="활용률" accent={C.f1} tag={month}>
         <div className="flex items-center justify-between mb-3">
           <button onClick={() => setMonth(shiftMonth(month, -1))} className="px-3 py-1.5 rounded-lg text-[12px]" style={{ border: "1px solid " + C.line2, color: C.text }}>← 이전</button>
@@ -1906,6 +1975,7 @@ function AdminScreen({ adminPw, initialRows, onExit }) {
         </Note>
       </Card>
 
+      {page === "np" && (
       <Card title="국민연금 가정값" accent={C.f1} tag="전체 적용">
         <Num label="A값 (전체 가입자 평균소득월액)" value={cfg.aValue} onChange={(v) => setCfg({ ...cfg, aValue: v })} />
         <div className="grid grid-cols-2 gap-3">
@@ -1919,6 +1989,71 @@ function AdminScreen({ adminPw, initialRows, onExit }) {
         {msg && <div className="text-[12px] mt-2" style={{ color: C.ok }}>{msg}</div>}
         <Note>매년 7월 고시된 값으로 갱신하면 모든 사용자 화면에 함께 반영돼요.</Note>
       </Card>
+      )}
+
+      {page === "tax" && (
+      <>
+      <Card title="근속연수공제" accent={C.f2} tag="4구간">
+        {tax.service.map((b, i) => (
+          <div key={i} className="py-2.5" style={{ borderTop: "1px solid " + C.line }}>
+            <div className="text-[12px] mb-1.5" style={{ color: C.dim }}>
+              {i === 0 ? "이하 구간" : (tax.service[i - 1].upto + "년 초과")}
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <Num label="상한(년)" value={b.upto} onChange={(v) => editRow("service", i, "upto", v)} unit="년" plain maxLen={3} />
+              <Num label="기본공제" value={b.base} onChange={(v) => editRow("service", i, "base", v)} />
+              <Num label="1년당" value={b.per} onChange={(v) => editRow("service", i, "per", v)} />
+            </div>
+          </div>
+        ))}
+        <Note>마지막 줄의 상한은 0으로 두면 "초과 구간"이 돼요.</Note>
+      </Card>
+
+      <Card title="환산급여공제" accent={C.f2} tag="5구간">
+        {tax.conv.map((b, i) => (
+          <div key={i} className="py-2.5" style={{ borderTop: "1px solid " + C.line }}>
+            <div className="text-[12px] mb-1.5" style={{ color: C.dim }}>
+              {i === 0 ? "이하 구간" : (comma(tax.conv[i - 1].upto) + " 초과")}
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <Num label="상한" value={b.upto} onChange={(v) => editRow("conv", i, "upto", v)} />
+              <Num label="기본공제" value={b.base} onChange={(v) => editRow("conv", i, "base", v)} />
+              <Rate label="초과분" value={b.rate} onChange={(v) => editRow("conv", i, "rate", v)} />
+            </div>
+          </div>
+        ))}
+      </Card>
+
+      <Card title="기본세율" accent={C.f2} tag="8구간">
+        {tax.brackets.map((b, i) => (
+          <div key={i} className="py-2.5" style={{ borderTop: "1px solid " + C.line }}>
+            <div className="text-[12px] mb-1.5" style={{ color: C.dim }}>
+              {i === 0 ? "이하 구간" : (comma(tax.brackets[i - 1].upto) + " 초과")}
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <Num label="상한" value={b.upto} onChange={(v) => editRow("brackets", i, "upto", v)} />
+              <Rate label="세율" value={b.rate} onChange={(v) => editRow("brackets", i, "rate", v)} />
+              <Num label="누진공제" value={b.deduct} onChange={(v) => editRow("brackets", i, "deduct", v)} />
+            </div>
+          </div>
+        ))}
+      </Card>
+
+      <Card title="연금수령 감면율 · 지방소득세" accent={C.f2}>
+        <div className="grid grid-cols-3 gap-2">
+          <Rate label="1~10년차" value={tax.cut10} onChange={(v) => setTax({ ...tax, cut10: toNum(v) })} />
+          <Rate label="11~20년차" value={tax.cut20} onChange={(v) => setTax({ ...tax, cut20: toNum(v) })} />
+          <Rate label="21년차~" value={tax.cut21} onChange={(v) => setTax({ ...tax, cut21: toNum(v) })} />
+        </div>
+        <Rate label="지방소득세율" value={tax.local} onChange={(v) => setTax({ ...tax, local: toNum(v) })} hint="소득세 대비 비율" />
+        <button onClick={saveTax} className="w-full py-2.5 rounded-lg text-[14px] font-medium mt-1" style={{ background: C.f1, color: "#fff" }}>
+          퇴직소득세 설정 저장
+        </button>
+        {taxMsg && <div className="text-[12px] mt-2" style={{ color: C.ok }}>{taxMsg}</div>}
+        <Note>법이 바뀌면 여기서만 고치면 돼요. 사용자 앱은 다시 올리지 않아도 됩니다.</Note>
+      </Card>
+      </>
+      )}
 
       <Card title="계정 관리" accent={C.f2} tag={total + "명"}>
         <input
@@ -1978,6 +2113,7 @@ function AdminScreen({ adminPw, initialRows, onExit }) {
           </div>
         ))}
       </Card>
+      </>)}
     </div>
   );
 }
@@ -1990,6 +2126,7 @@ function PensionConsulting() {
   const [chatLog, setChatLog] = useState([]);
   const [pending, setPending] = useState(null);
   const [showPw, setShowPw] = useState(false);
+  const [taxCfg, setTaxCfg] = useState(TAX_DEFAULTS);
   const scrollRef = useRef(null);
   const stale = useNewVersion();
 
@@ -2004,6 +2141,8 @@ function PensionConsulting() {
     (async () => {
       const c = await api.getNp();
       if (c) setSt((x) => ({ ...x, np: { ...x.np, ...c } }));
+      const tx = await api.getTax();
+      if (tx) setTaxCfg({ ...TAX_DEFAULTS, ...tx });
     })();
   }, [auth]);
 
@@ -2063,8 +2202,8 @@ function PensionConsulting() {
         {tab === "rp" && <ScreenRP rp={st.rp} set={patch("rp")} onAsk={ask} />}
         {tab === "pp" && <ScreenPP pp={st.pp} set={patch("pp")} onAsk={ask} />}
         {tab === "plan" && <ScreenPlan st={st} set={patch("plan")} onAsk={ask} />}
-        {tab === "tax" && <ScreenTax tax={st.tax} set={patch("tax")} rp={st.rp} onAsk={ask} />}
-        {tab === "yr" && <ScreenAnnuity tax={st.tax} set={patch("tax")} setAnn={patchAnn} np={st.np} onAsk={ask} />}
+        {tab === "tax" && <ScreenTax tax={st.tax} set={patch("tax")} rp={st.rp} onAsk={ask} P={taxCfg} />}
+        {tab === "yr" && <ScreenAnnuity tax={st.tax} set={patch("tax")} setAnn={patchAnn} np={st.np} onAsk={ask} P={taxCfg} />}
         {tab === "chat" && <ScreenChat log={chatLog} setLog={setChatLog} pending={pending} clearPending={() => setPending(null)} />}
       </main>
 
