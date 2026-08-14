@@ -1,0 +1,1946 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>3층 연금 설계</title>
+<meta name="theme-color" content="#F7F9FC" />
+<link rel="preconnect" href="https://cdn.jsdelivr.net" />
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css");
+  html, body { margin: 0; background: #E9EDF4; }
+  * { font-variant-numeric: tabular-nums; }
+  h1, h2, h3 { letter-spacing: -0.022em; }
+  input:focus, select:focus, button:focus-visible { outline: 2px solid #2E5FD9; outline-offset: 1px; }
+  ::-webkit-scrollbar { width: 0px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  #boot { font-family: system-ui, sans-serif; color: #68798F; padding: 40px 24px; font-size: 14px; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?deps=react@18.3.1",
+    "lucide-react": "https://esm.sh/lucide-react@0.383.0?deps=react@18.3.1",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+</head>
+<body>
+<div id="root"><div id="boot">불러오는 중…</div></div>
+
+<script type="text/babel" data-type="module" data-presets="react">
+import React, { useState, useEffect, useRef } from "react";
+import { createRoot } from "react-dom/client";
+import { createClient } from "@supabase/supabase-js";
+import {
+  Landmark, Building2, PiggyBank, Ruler, MessageSquare,
+  HelpCircle, Send, RotateCcw, AlertTriangle, Check, Info, Calculator, CalendarClock, CalendarDays,
+} from "lucide-react";
+
+/* ═══════════════════════════════════════════════════════════
+   ↓↓↓ 이 두 줄만 바꾸면 됩니다 ↓↓↓
+   Supabase → Settings → API Keys 에서 복사하세요.
+   ═══════════════════════════════════════════════════════════ */
+const SUPABASE_URL = "https://nnquocydtggxkqlpdqrr.supabase.co";
+const SUPABASE_KEY = "sb_publishable_sb_publishable_CsigM9nZUf14Z7oLu1oWtQ_Rqk-nYlx";
+/* ═══════════════════════════════════════════════════════════ */
+
+
+/* ────────────────────────────────────────────────────────────
+   Pension Consulting — 3층 연금 설계
+   국민연금 / 퇴직연금 / 개인연금 / 연금컨설팅 / 퇴직소득세 / 챗봇
+   ──────────────────────────────────────────────────────────── */
+
+const C = {
+  ink: "#F7F9FC",
+  panel: "#FFFFFF",
+  panel2: "#F2F5FA",
+  line: "rgba(21,44,82,0.12)",
+  line2: "rgba(21,44,82,0.26)",
+  text: "#16233A",
+  dim: "#68798F",
+  faint: "rgba(104,121,143,0.78)",
+  f1: "#2E5FD9",
+  f2: "#0D9488",
+  f3: "#B47407",
+  warn: "#D92D45",
+  ok: "#12864A",
+};
+
+const PRETENDARD =
+  "'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif";
+const FONT_UI = PRETENDARD;
+const FONT_DISPLAY = PRETENDARD;
+const FONT_NUM = PRETENDARD;
+
+/* ── 숫자/날짜 유틸 ───────────────────────────────────────── */
+const toNum = (v) => {
+  const n = parseFloat(String(v ?? "").replace(/,/g, ""));
+  return isNaN(n) ? 0 : n;
+};
+const comma = (v) => (v === "" || v === null || v === undefined ? "" : Number(v).toLocaleString("ko-KR"));
+const won = (n) => Math.round(n || 0).toLocaleString("ko-KR") + "원";
+const big = (n) => {
+  n = Math.round(n || 0);
+  if (n >= 1e8) {
+    const eok = Math.floor(n / 1e8);
+    const man = Math.round((n % 1e8) / 1e4);
+    return man > 0 ? eok + "억 " + man.toLocaleString() + "만원" : eok + "억원";
+  }
+  if (n >= 1e4) return Math.round(n / 1e4).toLocaleString() + "만원";
+  return n.toLocaleString() + "원";
+};
+
+const TODAY = new Date();
+// 앱 상단의 "기준일" 값. 렌더링 시작 시 App이 갱신하고, 모든 계산이 이 날짜를 오늘로 봄
+let NOW = TODAY;
+const D = (s) => {
+  if (!s) return null;
+  const d = new Date(s + "T00:00:00");
+  return isNaN(d.getTime()) ? null : d;
+};
+const iso = (d) => d.toISOString().slice(0, 10);
+const daysBetween = (a, b) => Math.round((b - a) / 86400000);
+// 달력 기준 연수 — 응당일이면 정확히 정수로 떨어짐 (윤년 오차 없음)
+const yearsBetween = (a, b) => {
+  let y = b.getFullYear() - a.getFullYear();
+  const anniv = new Date(a);
+  anniv.setFullYear(a.getFullYear() + y);
+  if (anniv > b) {
+    y -= 1;
+    anniv.setFullYear(anniv.getFullYear() - 1);
+  }
+  const next = new Date(anniv);
+  next.setFullYear(anniv.getFullYear() + 1);
+  return y + (b - anniv) / (next - anniv);
+};
+// 만근 기준 개월수 — 일자를 무시하고 입·퇴사한 달을 통째로 셈
+const fullMonths = (a, b) =>
+  (b.getFullYear() * 12 + b.getMonth()) - (a.getFullYear() * 12 + a.getMonth()) + 1;
+const monthsBetween = (a, b) => {
+  let m = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+  if (b.getDate() < a.getDate()) m -= 1;
+  return m;
+};
+const ym = (years) => {
+  const y = Math.floor(years + 1e-9);
+  let m = Math.floor((years - y) * 12 + 1e-9);
+  return m >= 12 ? y + 1 + "년 0개월" : y + "년 " + m + "개월";
+};
+const addMonths = (d, m) => {
+  const n = new Date(d);
+  n.setMonth(n.getMonth() + m);
+  return n;
+};
+const addYears = (d, y) => {
+  const n = new Date(d);
+  n.setFullYear(n.getFullYear() + Math.floor(y));
+  return n;
+};
+
+/* ── 금융 계산 ────────────────────────────────────────────── */
+const mRate = (annualPct) => Math.pow(1 + annualPct / 100, 1 / 12) - 1;
+
+// 적립: 현재잔액 + 매월납입의 미래가치
+function futureValue(current, monthlyPay, years, ratePct) {
+  const n = Math.max(0, Math.round(years * 12));
+  const r = mRate(ratePct);
+  const fvNow = current * Math.pow(1 + r, n);
+  const fvPay = r > 0 ? monthlyPay * ((Math.pow(1 + r, n) - 1) / r) : monthlyPay * n;
+  return fvNow + fvPay;
+}
+// 보험연금 · 확정연금(기수불) — 연금액 = 적립금 ÷ [(1 − 1/(1+i)^n) ÷ (1 − 1/(1+i))]
+function annuityCertain(lump, years, ratePct) {
+  const n = Math.max(1, Math.round(years));
+  const i = ratePct / 100;
+  if (i <= 0) return { yearly: lump / n, monthly: lump / n / 12, factor: n };
+  const v = 1 / (1 + i);
+  const factor = (1 - Math.pow(v, n)) / (1 - v);
+  return { yearly: lump / factor, monthly: lump / factor / 12, factor };
+}
+
+// 인출: 적립액을 N년간 나눠 받을 때 월 수령액
+function monthlyFromLump(lump, years, ratePct) {
+  const n = Math.max(1, Math.round(years * 12));
+  const r = mRate(ratePct);
+  return r > 0 ? (lump * r) / (1 - Math.pow(1 + r, -n)) : lump / n;
+}
+// 역산: 월 X원을 N년간 받으려면 개시시점에 필요한 재원
+function lumpFromMonthly(monthly, years, ratePct) {
+  const n = Math.max(1, Math.round(years * 12));
+  const r = mRate(ratePct);
+  return r > 0 ? (monthly * (1 - Math.pow(1 + r, -n))) / r : monthly * n;
+}
+// 역산: 목표 재원을 만들기 위한 월 납입액
+function monthlyToReach(target, years, ratePct) {
+  const n = Math.max(1, Math.round(years * 12));
+  const r = mRate(ratePct);
+  const factor = r > 0 ? (Math.pow(1 + r, n) - 1) / r : n;
+  return target / factor;
+}
+// 연금소득세율(사적연금, 수령 개시나이 기준)
+const pensionTaxRate = (age) => (age >= 80 ? 3.3 : age >= 70 ? 4.4 : 5.5);
+
+/* ── 국민연금 ─────────────────────────────────────────── */
+// 출생연도별 노령연금 수급개시연령
+function npStartAge(birthYear) {
+  if (birthYear <= 1952) return 60;
+  if (birthYear <= 1956) return 61;
+  if (birthYear <= 1960) return 62;
+  if (birthYear <= 1964) return 63;
+  if (birthYear <= 1968) return 64;
+  return 65;
+}
+// 가입 연도별 소득대체율 상수 (1999~2007: 1.8 / 2008~2027: 매년 0.015 감소 / 2028~: 1.2)
+const rateConst = (y) => (y >= 2028 ? 1.2 : y <= 2007 ? 1.8 : 1.5 - 0.015 * (y - 2008));
+
+function calcNP(np) {
+  const A = toNum(np.aValue) || 3089062;
+  const rate = 0.09;
+  const paidM = Math.round(toNum(np.paidMonths));
+  const paidAmt = toNum(np.paidAmount);
+  const income = toNum(np.income);
+  const birth = D(np.birth);
+
+  // 기준소득월액 상·하한 적용
+  const cap = toNum(np.cap) || 6590000;
+  const floorAmt = toNum(np.floor) || 410000;
+  const capped = income > cap;
+  const belowFloor = income > 0 && income < floorAmt;
+  const incomeUsed = income <= 0 ? 0 : Math.min(Math.max(income, floorAmt), cap);
+
+  // 납부 종료 시점 — 공단은 60세까지 납부를 가정
+  const age60 = birth ? addYears(birth, 60) : null;
+  const useAge60 = np.endBasis !== "retire";
+  const end = useAge60 ? age60 : D(np.endDate);
+
+  const futureM = end ? Math.max(0, fullMonths(NOW, end)) : 0; // 조회한 달과 도달한 달을 모두 포함
+  const monthlyPrem = incomeUsed * rate;
+  const totalM = paidM + futureM;
+
+  // 현재가치 기준 — 소득이 지금 수준에 머문다고 보는 금액 (연금액 산정용)
+  const totalAmt = paidAmt + monthlyPrem * futureM;
+
+  // 미래가치 기준 — 소득이 매년 오른다고 보는 금액 (공단 조회값과 같은 방식)
+  const g = toNum(np.growth) / 100;
+  let futureAmt = 0;
+  for (let k = 0; k < futureM; k++) futureAmt += monthlyPrem * Math.pow(1 + g, k / 12);
+  const totalAmtFV = paidAmt + futureAmt;
+  const lastPrem = monthlyPrem * Math.pow(1 + g, futureM / 12);
+
+  // ── B값(가입기간 평균 기준소득월액) ──
+  // 과거: 납부보험료에서 역산(또는 직접 입력) → 상한 적용
+  // 미래: 현재 소득이 소득상승률로 오르되 상한에서 멈춤
+  const pastRaw = paidM > 0 ? paidAmt / paidM / rate : 0;
+  const pastAvg = Math.min(toNum(np.pastAvg) > 0 ? toNum(np.pastAvg) : pastRaw, cap);
+  // 미래분은 현재 소득이 유지된다고 봄 (현재가치 기준) — 소득상승률은 납입보험료 대조용
+  const futAvg = incomeUsed;
+  const futSum = futAvg * futureM;
+  const Bcalc = totalM > 0 ? (paidM * pastAvg + futSum) / totalM : 0;
+  const B = toNum(np.bValue) > 0 ? toNum(np.bValue) : Bcalc;
+  // 월별로 가입 연도의 상수를 적용해 가중평균
+  let cSum = 0;
+  const pStart = addMonths(NOW, -paidM);
+  for (let k = 0; k < paidM; k++) cSum += rateConst(addMonths(pStart, k).getFullYear());
+  for (let k = 0; k < futureM; k++) cSum += rateConst(addMonths(NOW, k).getFullYear());
+  const konst = totalM > 0 ? cSum / totalM : 1.2;
+
+  let yearly = konst * (A + B);
+  if (totalM >= 240) yearly *= 1 + (0.05 * (totalM - 240)) / 12;
+  else yearly *= totalM / 240;
+  const monthly = totalM >= 120 ? yearly / 12 : 0; // 최소 가입기간 10년
+
+  const bYear = birth ? birth.getFullYear() : 1985;
+  const startAge = npStartAge(bYear);
+  return {
+    paidM, paidAmt, futureM, totalM, totalAmt, totalAmtFV, lastPrem, monthlyPrem, B, Bcalc, pastRaw, pastAvg, futAvg,
+    monthly, startAge, konst, cap, floorAmt, capped, belowFloor, incomeUsed, useAge60, end,
+    A,
+    startDate: birth ? addYears(birth, startAge) : null,
+    eligible: totalM >= 120,
+  };
+}
+
+/* ── 퇴직연금 ─────────────────────────────────────────── */
+function calcRP(rp) {
+  const join = D(rp.join);
+  const retire = D(rp.retire);
+  const out = { type: rp.type, lump: 0, days: 0, years: 0, detail: {} };
+  if (!join || !retire || retire <= join) return out;
+
+  // 근속기간은 월 단위 만근 — 월중 언제 입·퇴사해도 그 달을 1개월로 셈
+  out.days = daysBetween(join, retire);
+  out.months = Math.max(0, fullMonths(join, retire));
+  out.years = out.months / 12;
+
+  if (rp.type === "DB") {
+    const pay = toNum(rp.salary);
+    const bonus = toNum(rp.bonus);
+    const monthlyAvg = pay + bonus / 12; // 1개월분 평균임금
+    out.lump = monthlyAvg * out.years;
+    out.detail = { monthlyAvg, pay, bonus };
+  } else {
+    const cur = toNum(rp.curAnnual);
+    const endA = toNum(rp.endAnnual);
+    const r = toNum(rp.rate);
+    const bal = toNum(rp.curBalance);
+    const pastM = Math.max(0, Math.min(out.months, fullMonths(join, NOW)));
+    const past = pastM / 12;
+    const left = Math.max(0, (out.months - pastM) / 12);
+
+    const base = bal > 0 ? bal : (cur / 12) * past; // 현재 적립금 미입력 시 근사
+    let fv = base * Math.pow(1 + r / 100, left);
+
+    // 임금은 현재 → 퇴직시점까지 복리로 상승 (두 입력값에서 연평균 상승률 역산)
+    const n = Math.ceil(left);
+    const wageGrowth = n > 1 && cur > 0 && endA > 0 ? Math.pow(endA / cur, 1 / (n - 1)) - 1 : 0;
+
+    let contribSum = 0;
+    for (let i = 0; i < n; i++) {
+      const span = Math.min(1, left - i);              // 마지막 해는 남은 기간만큼
+      const wage = cur * Math.pow(1 + wageGrowth, i);  // i년차 연간임금총액
+      const contrib = (wage / 12) * span;              // 그해 부담금
+      contribSum += contrib;
+      fv += contrib * Math.pow(1 + r / 100, left - i - span); // 연말 납입 → 그 뒤부터 복리
+    }
+    out.lump = fv;
+    out.detail = { past, left, base, cur, endA, wageGrowth, contribSum, years: n };
+  }
+  return out;
+}
+
+/* ── 퇴직소득세 (소득세법 시행규칙 별지 제24호서식(2)) ───── */
+// 기본세율 (과세표준 → 산출세액)
+function baseTax(x) {
+  if (x <= 14000000) return x * 0.06;
+  if (x <= 50000000) return x * 0.15 - 1260000;
+  if (x <= 88000000) return x * 0.24 - 5760000;
+  if (x <= 150000000) return x * 0.35 - 15440000;
+  if (x <= 300000000) return x * 0.38 - 19940000;
+  if (x <= 500000000) return x * 0.4 - 25940000;
+  if (x <= 1000000000) return x * 0.42 - 35940000;
+  return x * 0.45 - 65940000;
+}
+// 근속연수공제
+function serviceDeduction(y) {
+  if (y <= 5) return y * 1000000;
+  if (y <= 10) return 5000000 + (y - 5) * 2000000;
+  if (y <= 20) return 15000000 + (y - 10) * 2500000;
+  return 40000000 + (y - 20) * 3000000;
+}
+// 환산급여별 공제
+function convDeduction(c) {
+  if (c <= 8000000) return c;
+  if (c <= 70000000) return 8000000 + (c - 8000000) * 0.6;
+  if (c <= 100000000) return 45200000 + (c - 70000000) * 0.55;
+  if (c <= 300000000) return 61700000 + (c - 100000000) * 0.45;
+  return 151700000 + (c - 300000000) * 0.35;
+}
+
+const sDedRule = (y) =>
+  y <= 5 ? "5년 이하 · 1년당 100만" :
+  y <= 10 ? "6~10년 · 500만 + 초과 1년당 200만" :
+  y <= 20 ? "11~20년 · 1,500만 + 초과 1년당 250만" :
+  "20년 초과 · 4,000만 + 초과 1년당 300만";
+const cDedRule = (c) =>
+  c <= 8000000 ? "800만 이하 · 전액" :
+  c <= 70000000 ? "800만~7천만 · 800만 + 초과 60%" :
+  c <= 100000000 ? "7천만~1억 · 4,520만 + 초과 55%" :
+  c <= 300000000 ? "1억~3억 · 6,170만 + 초과 45%" :
+  "3억 초과 · 1억 5,170만 + 초과 35%";
+
+function calcTax(t) {
+  const s = D(t.startDate), e = D(t.endDate);
+  const pay = toNum(t.pay);
+  const nontax = toNum(t.nontax);
+  const taxable = Math.max(0, pay - nontax); // (17) 과세대상 퇴직급여
+
+  const months = s && e && e >= s ? fullMonths(s, e) : 0; // (22) 근속월수 — 만근 기준
+  const adj = Math.max(0, months - toNum(t.exclude) + toNum(t.add));
+  const years = adj > 0 ? Math.ceil(adj / 12) : 0; // (26) 근속연수 — 1년 미만 올림
+
+  const sDed = years > 0 ? Math.min(serviceDeduction(years), taxable) : 0; // (28)
+  const conv = years > 0 ? Math.floor(((taxable - sDed) * 12) / years) : 0; // (29) 환산급여
+  const cDed = Math.floor(convDeduction(conv)); // (30)
+  const base = Math.max(0, conv - cDed); // (31) 과세표준
+  const convTax = Math.floor(baseTax(base)); // (32) 환산산출세액
+  const gross = Math.floor((convTax / 12) * years); // (33) 산출세액
+  const report = Math.max(0, gross - toNum(t.prepaid) - toNum(t.credit)); // (36) 신고대상세액
+
+  const irpAmt = Math.min(toNum(t.irpAmount), taxable);
+  const deferred = taxable > 0 ? Math.floor((report * irpAmt) / taxable) : 0; // (40) 이연퇴직소득세
+  const withhold = Math.max(0, report - deferred); // (44) 차감원천징수세액
+  const local = Math.floor(withhold / 10); // 지방소득세 10%
+  const reportLocal = Math.floor(report / 10);
+
+  return {
+    taxable, months, adj, years, sDed, conv, cDed, base, convTax, gross, report,
+    sDedRule: sDedRule(years), cDedRule: cDedRule(conv),
+    irpAmt, deferred, withhold, local, reportLocal,
+    total: withhold + local,
+    effRate: taxable > 0 ? (report + reportLocal) / taxable : 0,
+    saved: Math.floor(deferred * 0.3), // 연금 10년 이내 수령 시 30% 감면
+  };
+}
+
+/* ── 연금수령연차 (소득세법 시행령 제40조의2) ─────────────── */
+const PIVOT_2013 = new Date("2013-03-01T00:00:00");
+
+function calcAnnuityYear(a, birthStr, refYear) {
+  const open = D(a.open), start = D(a.start), birth = D(birthStr);
+  const rpJoin = D(a.rpJoin); // 퇴직연금(DB/DC) 제도 가입일
+  const year = Math.round(toNum(refYear));
+
+  // 퇴직급여가 이체된 계좌는 퇴직연금 가입일을 그 계좌의 가입일로 봄
+  const judge = a.fromSeverance && rpJoin && (!open || rpJoin < open) ? rpJoin : open;
+  const bySeverance = !!(a.fromSeverance && rpJoin && open && rpJoin < open);
+
+  const age55 = birth ? addYears(birth, 55) : null;   // 만 55세 도달일
+  const fiveY = open ? addYears(open, 5) : null;      // 가입 후 5년
+  const exempt = !!a.fromSeverance;                   // 퇴직급여 재원은 5년 요건 면제
+
+  let firstOK = age55;
+  if (age55 && fiveY && !exempt && fiveY > age55) firstOK = fiveY;
+
+  // 요건 충족 전에 개시일을 잡아도 1년차는 요건 충족 시점부터
+  const eff = start && firstOK ? (start > firstOK ? start : firstOK) : start || firstOK;
+  const startYear = eff ? eff.getFullYear() : null;
+
+  const base = judge && judge < PIVOT_2013 ? 6 : 1;       // 2013.3.1 이전 가입은 6년차부터
+  const nth = startYear ? base + (year - startYear) : 0;  // 기준연도의 연금수령연차
+
+  const value = toNum(a.value);
+  const noLimit = nth >= 11;
+  const limit = nth >= 1 && !noLimit ? (value / (11 - nth)) * 1.2 : 0;
+  const cut = nth <= 10 ? 30 : nth <= 20 ? 40 : 50;       // 퇴직소득세 감면율
+
+  return {
+    firstOK, eff, startYear, base, nth, value, noLimit, limit, cut, judge, bySeverance,
+    started: nth >= 1,
+    y11: startYear ? startYear + (11 - base) : null,
+    y21: startYear ? startYear + (21 - base) : null,
+    delayed: !!(start && firstOK && firstOK > start),
+  };
+}
+
+function calcPP(pp) {
+  const start = D(pp.start);
+  const bal = toNum(pp.balance);
+  const yearly = toNum(pp.yearly);   // 연 납입액
+  const r = toNum(pp.rate) / 100;    // 적립기간 수익률
+
+  const left = start ? Math.max(0, yearsBetween(NOW, start)) : 0;
+  const n = Math.ceil(left);
+
+  let fv = bal * Math.pow(1 + r, left);     // 현재 적립금의 미래가치
+  let contribSum = 0;
+  for (let i = 0; i < n; i++) {
+    const span = Math.min(1, left - i);
+    const c = yearly * span;
+    contribSum += c;
+    fv += c * Math.pow(1 + r, left - i - span); // 연말 납입 → 그 뒤부터 복리
+  }
+
+  const payYears = toNum(pp.payYears) || 10;
+  const ann = annuityCertain(fv, payYears, toNum(pp.payRate));
+  const paidIn = bal + contribSum; // 내 돈: 현재 적립금 + 앞으로 낼 납입액
+
+  return {
+    start, left, years: n, fv, contribSum, paidIn,
+    profit: fv - paidIn,
+    balFV: bal * Math.pow(1 + r, left),
+    monthly: ann.monthly, yearlyPay: ann.yearly,
+    endDate: start ? addYears(start, payYears) : null,
+  };
+}
+
+
+/* ── UI 부품 ─────────────────────────────────────────────── */
+function Field({ label, hint, children, right }) {
+  return (
+    <label className="block mb-3">
+      <div className="flex items-baseline justify-between mb-1.5">
+        <span className="text-xs tracking-wide" style={{ color: C.dim }}>{label}</span>
+        {right && <span className="text-xs" style={{ color: C.dim, fontFamily: FONT_NUM }}>{right}</span>}
+      </div>
+      {children}
+      {hint && <div className="text-xs mt-1 leading-snug" style={{ color: C.faint }}>{hint}</div>}
+    </label>
+  );
+}
+
+const inputStyle = {
+  background: C.panel2,
+  border: "1px solid " + C.line,
+  color: C.text,
+  fontFamily: FONT_NUM,
+  colorScheme: "light",
+};
+
+function Num({ label, value, onChange, unit = "원", hint, right, plain, maxLen }) {
+  return (
+    <Field label={label} hint={hint} right={right}>
+      <div className="flex items-center rounded-lg overflow-hidden" style={inputStyle}>
+        <input
+          className="w-full bg-transparent px-3 py-2.5 text-right text-[15px] outline-none"
+          inputMode="numeric"
+          maxLength={maxLen}
+          value={plain ? value : comma(value)}
+          onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, "").slice(0, maxLen || 15))}
+          placeholder="0"
+          style={{ fontFamily: FONT_NUM, color: C.text }}
+        />
+        <span className="pr-3 pl-1 text-xs shrink-0" style={{ color: C.dim }}>{unit}</span>
+      </div>
+    </Field>
+  );
+}
+
+function Rate({ label, value, onChange, hint }) {
+  return (
+    <Field label={label} hint={hint}>
+      <div className="flex items-center rounded-lg overflow-hidden" style={inputStyle}>
+        <input
+          className="w-full bg-transparent px-3 py-2.5 text-right text-[15px] outline-none"
+          inputMode="decimal"
+          value={value}
+          onChange={(e) => onChange(e.target.value.replace(/[^0-9.]/g, ""))}
+          placeholder="0.0"
+          style={{ fontFamily: FONT_NUM, color: C.text }}
+        />
+        <span className="pr-3 pl-1 text-xs shrink-0" style={{ color: C.dim }}>%</span>
+      </div>
+    </Field>
+  );
+}
+
+// 숫자만 치면 하이픈이 자동으로 붙는 날짜 입력 (연→월→일 자동 이동)
+const maskDate = (raw) => {
+  const d = String(raw).replace(/[^0-9]/g, "").slice(0, 8);
+  let out = d.slice(0, 4);
+  if (d.length > 4) out += "-" + d.slice(4, 6);
+  if (d.length > 6) out += "-" + d.slice(6, 8);
+  return out;
+};
+const isValidDate = (t) => {
+  const d = t.replace(/[^0-9]/g, "");
+  if (d.length !== 8) return false;
+  const y = +d.slice(0, 4), m = +d.slice(4, 6), day = +d.slice(6, 8);
+  if (m < 1 || m > 12 || day < 1) return false;
+  const dt = new Date(y, m - 1, day);
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === day;
+};
+
+function DateIn({ label, value, onChange, hint }) {
+  const [draft, setDraft] = useState(null);
+  const picker = useRef(null);
+  const shown = draft !== null ? draft : value || "";
+
+  const type = (raw) => {
+    const t = maskDate(raw);
+    setDraft(t);
+    if (isValidDate(t)) {
+      onChange(t);
+      setDraft(null);
+    }
+  };
+  const commit = () => {
+    if (draft === null) return;
+    if (draft === "") onChange("");
+    else if (isValidDate(draft)) onChange(draft);
+    setDraft(null); // 미완성 입력은 원래 값으로 되돌림
+  };
+  const openPicker = () => {
+    const el = picker.current;
+    if (!el) return;
+    try { el.showPicker(); } catch (e) { el.focus(); }
+  };
+
+  return (
+    <Field label={label} hint={hint}>
+      <div className="flex items-center rounded-lg overflow-hidden" style={inputStyle}>
+        <input
+          className="w-full bg-transparent px-3 py-2.5 text-[15px] outline-none"
+          inputMode="numeric"
+          placeholder="YYYY-MM-DD"
+          maxLength={10}
+          value={shown}
+          onChange={(e) => type(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => e.key === "Enter" && commit()}
+          style={{ fontFamily: FONT_NUM, color: C.text }}
+        />
+        <button onClick={openPicker} className="px-2.5 py-2.5 shrink-0" aria-label="달력에서 고르기">
+          <CalendarDays size={15} color={C.dim} />
+        </button>
+        <input
+          ref={picker}
+          type="date"
+          tabIndex={-1}
+          value={value || ""}
+          onChange={(e) => { onChange(e.target.value); setDraft(null); }}
+          style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
+        />
+      </div>
+    </Field>
+  );
+}
+
+function Pick({ label, value, onChange, options, hint }) {
+  return (
+    <Field label={label} hint={hint}>
+      <select
+        className="w-full rounded-lg px-3 py-2.5 text-[15px] outline-none appearance-none"
+        style={{ ...inputStyle, fontFamily: FONT_UI }}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {options.map((o) => (
+          <option key={o.v} value={o.v} style={{ background: C.panel2 }}>{o.t}</option>
+        ))}
+      </select>
+    </Field>
+  );
+}
+
+function Card({ children, accent, title, tag }) {
+  return (
+    <section
+      className="rounded-2xl p-4 mb-4"
+      style={{ background: C.panel, border: "1px solid " + C.line, borderTop: accent ? "2px solid " + accent : undefined, boxShadow: "0 1px 3px rgba(21,44,82,0.05)" }}
+    >
+      {title && (
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-[15px] font-semibold" style={{ fontFamily: FONT_DISPLAY, color: C.text }}>{title}</h3>
+          {tag && <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ color: accent, border: "1px solid " + accent + "55" }}>{tag}</span>}
+        </div>
+      )}
+      {children}
+    </section>
+  );
+}
+
+function Row({ k, v, strong, color, sub }) {
+  return (
+    <div className="flex items-baseline justify-between py-2" style={{ borderTop: "1px solid " + C.line }}>
+      <div>
+        <div className="text-[13px]" style={{ color: C.dim }}>{k}</div>
+        {sub && <div className="text-[11px] mt-0.5" style={{ color: C.faint }}>{sub}</div>}
+      </div>
+      <div
+        className={strong ? "text-[19px] font-semibold" : "text-[15px]"}
+        style={{ fontFamily: FONT_NUM, color: color || C.text }}
+      >
+        {v}
+      </div>
+    </div>
+  );
+}
+
+function Note({ children, tone }) {
+  const c = tone === "warn" ? C.warn : C.dim;
+  return (
+    <div className="flex gap-2 mt-3 text-[11.5px] leading-relaxed" style={{ color: c }}>
+      <Info size={13} className="shrink-0 mt-0.5" />
+      <div>{children}</div>
+    </div>
+  );
+}
+
+function Toggle({ label, checked, onChange, hint }) {
+  return (
+    <button onClick={() => onChange(!checked)} className="w-full flex items-start gap-2 mb-3 text-left">
+      <span className="shrink-0 mt-0.5 flex items-center justify-center rounded"
+        style={{ width: 17, height: 17, border: "1px solid " + (checked ? C.f2 : C.line2), background: checked ? C.f2 : "transparent" }}>
+        {checked && <Check size={12} color="#fff" strokeWidth={3} />}
+      </span>
+      <span>
+        <span className="text-[13px]" style={{ color: C.text }}>{label}</span>
+        {hint && <span className="block text-[11px] mt-0.5" style={{ color: C.faint }}>{hint}</span>}
+      </span>
+    </button>
+  );
+}
+
+function MiniDate({ value, onChange }) {
+  const [draft, setDraft] = useState(null);
+  const shown = draft !== null ? draft : value || "";
+  return (
+    <input
+      className="rounded px-2 py-1 text-[12px] outline-none"
+      style={{ ...inputStyle, width: 106, fontFamily: FONT_NUM }}
+      inputMode="numeric"
+      maxLength={10}
+      value={shown}
+      placeholder="YYYY-MM-DD"
+      onChange={(e) => {
+        const t = maskDate(e.target.value);
+        setDraft(t);
+        if (isValidDate(t)) { onChange(t); setDraft(null); }
+      }}
+      onBlur={() => setDraft(null)}
+    />
+  );
+}
+
+/* 화면 머리말 */
+function ScreenHead({ eyebrow, title, desc, color }) {
+  return (
+    <header className="mb-4 pb-3" style={{ borderBottom: "1px dashed " + C.line2 }}>
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <span style={{ width: 14, height: 2, background: color, display: "inline-block" }} />
+        <span className="text-[10px] tracking-[0.25em]" style={{ color, fontFamily: FONT_NUM }}>{eyebrow}</span>
+      </div>
+      <h2 className="text-[21px] font-semibold leading-tight" style={{ fontFamily: FONT_DISPLAY, color: C.text }}>{title}</h2>
+      <p className="text-[12px] mt-1" style={{ color: C.dim }}>{desc}</p>
+    </header>
+  );
+}
+
+/* 도움말 → 챗봇 이동 */
+function HelpBar({ onAsk, placeholder }) {
+  const [q, setQ] = useState("");
+  const go = () => { if (q.trim()) { onAsk(q.trim()); setQ(""); } };
+  return (
+    <div className="rounded-2xl p-3 mb-2" style={{ background: "rgba(46,95,217,0.05)", border: "1px dashed " + C.line2 }}>
+      <div className="flex items-center gap-1.5 mb-2 text-[12px]" style={{ color: C.dim }}>
+        <HelpCircle size={13} /> 도움말 — 궁금한 점을 적으면 문의 화면에서 답해드려요
+      </div>
+      <div className="flex gap-2">
+        <input
+          className="flex-1 rounded-lg px-3 py-2 text-[13px] outline-none"
+          style={{ ...inputStyle, fontFamily: FONT_UI }}
+          value={q}
+          placeholder={placeholder}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && go()}
+        />
+        <button
+          onClick={go}
+          className="px-3 rounded-lg text-[13px] font-medium shrink-0"
+          style={{ background: C.f1, color: "#FFFFFF" }}
+        >
+          질문하기
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── 화면 1 · 국민연금 ────────────────────────────────────── */
+function ScreenNP({ np, set, onAsk }) {
+  const r = calcNP(np);
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <ScreenHead eyebrow="STEP 1" title="국민연금" desc="국민연금공단에서 조회한 가입내역을 그대로 옮겨 적으세요" color={C.f1} />
+
+      <Card title="기본 정보" accent={C.f1}>
+        <DateIn label="생년월일" value={np.birth} onChange={(v) => set({ birth: v })} hint={"수급개시연령 판정에 사용해요 · 현재 기준 " + r.startAge + "세부터 수령"} />
+        <Num
+          label="현재 기준소득월액"
+          value={np.income}
+          onChange={(v) => set({ income: v })}
+          right={r.capped ? "상한 적용" : r.belowFloor ? "하한 적용" : ""}
+          hint={"보험료 9% = 월 " + won(r.monthlyPrem) + " · 이 중 본인부담 4.5%는 " + won(r.monthlyPrem / 2)}
+        />
+        <Pick
+          label="보험료 납부 종료 시점"
+          value={np.endBasis || "age60"}
+          onChange={(v) => set({ endBasis: v })}
+          options={[
+            { v: "age60", t: "만 60세까지 (공단 가정)" },
+            { v: "retire", t: "퇴직예정일까지" },
+          ]}
+          hint={r.end ? "납부 종료 " + iso(r.end) + " · 남은 " + r.futureM + "개월" : "생년월일을 입력하세요"}
+        />
+        {np.endBasis === "retire" && (
+          <DateIn label="퇴직예정일" value={np.endDate} onChange={(v) => set({ endDate: v })} />
+        )}
+      </Card>
+
+      <Card title="현재 기준 — 조회한 값 입력" accent={C.f1} tag="입력">
+        <Num label="총 납입월수" value={np.paidMonths} onChange={(v) => set({ paidMonths: v })} unit="개월" hint="국민연금공단 → 마이페이지 → 가입내역 조회" />
+        <Num label="총 납입금액" value={np.paidAmount} onChange={(v) => set({ paidAmount: v })} hint="같은 화면의 누적 납부보험료 (본인부담 + 사업장부담)" />
+        <Row k="가입기간" v={Math.floor(r.paidM / 12) + "년 " + (r.paidM % 12) + "개월"} />
+      </Card>
+
+      <Card title="퇴직시점 — 계산 결과" accent={C.f1} tag="계산">
+        <Row k="추가 납입 예정" v={r.futureM + "개월"} sub={"오늘부터 퇴직예정일까지"} />
+        <Row k="예상 총 납입월수" v={r.totalM + "개월"} sub={Math.floor(r.totalM / 12) + "년 " + (r.totalM % 12) + "개월"} strong color={C.f1} />
+        <Row
+          k="예상 총 납입보험료"
+          v={big(r.totalAmt)}
+          strong color={C.f1}
+          sub={"현재 " + big(r.paidAmt) + " + 월 " + won(r.monthlyPrem) + " × " + r.futureM + "개월"}
+        />
+        {toNum(np.growth) > 0 && (
+          <Row k={"소득상승률 " + np.growth + "% 반영 시"} v={big(r.totalAmtFV)} color={C.dim} sub={"마지막 보험료 " + won(r.lastPrem) + " · 공단 조회값과 같은 방식"} />
+        )}
+        <Row k="예상 월 수령액" v={r.eligible ? won(r.monthly) : "수급 불가"} sub={r.eligible ? r.startAge + "세부터 (세전, 현재가치)" : "최소 가입기간 10년 미달"} strong color={C.text} />
+        <Note>위 금액은 향후 소득과 물가가 변동없는 것으로 가정하여 산정합니다.</Note>
+        <Note>
+          예상 납부보험료는 기준소득월액이 지금과 같다고 보고, 납부 종료 시점까지 계속 납부하는 것을 가정해요.
+          납부를 중단하면 그 시점까지만 반영됩니다.
+        </Note>
+        <Note>
+          국민연금공단 조회값은 소득과 A값이 매년 오른다고 본 미래가치라 여기보다 커요. 앱은 다른 연금과 견주기 위해 현재가치로 보여줍니다.
+        </Note>
+      </Card>
+
+      <Card accent={C.dim}>
+        <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between">
+          <span className="text-[15px] font-semibold" style={{ color: C.text }}>내 값 직접 입력</span>
+          <span className="text-[11px]" style={{ color: C.dim }}>{open ? "접기" : "펼치기"}</span>
+        </button>
+        {open && (
+          <div className="mt-3">
+            <Num
+              label="B값 (본인 평균 기준소득월액)"
+              value={np.bValue}
+              onChange={(v) => set({ bValue: v })}
+              right={toNum(np.bValue) > 0 ? "직접 입력" : "계산 " + comma(Math.round(r.Bcalc))}
+              hint="공단 조회값을 넣으면 그 값으로 계산해요. 비워두면 앱이 직접 계산합니다"
+            />
+            <Num
+              label="과거 평균 기준소득월액"
+              value={np.pastAvg}
+              onChange={(v) => set({ pastAvg: v })}
+              right={"역산 " + comma(Math.round(r.pastRaw))}
+              hint="공단 가입내역의 기준소득월액 이력 평균. 비워두면 납부보험료에서 역산해요"
+            />
+          </div>
+        )}
+      </Card>
+
+      <HelpBar onAsk={onAsk} placeholder="예: 국민연금은 몇 살부터 받나요?" />
+    </div>
+  );
+}
+
+/* ── 화면 2 · 퇴직연금 ────────────────────────────────────── */
+function ScreenRP({ rp, set, onAsk }) {
+  const r = calcRP(rp);
+  // 급여는 1년에 한 번 오른다고 보고 인상 횟수를 정수로 셈
+  const raiseCount = Math.max(0, Math.floor(yearsBetween(NOW, D(rp.retire) || NOW)));
+  const ann = annuityCertain(r.lump, toNum(rp.payYears) || 10, toNum(rp.payRate));
+  const isDB = rp.type === "DB";
+  return (
+    <div>
+      <ScreenHead eyebrow="STEP 2" title="퇴직연금" desc="회사가 운용하는 제도에 따라 계산 방식이 달라져요" color={C.f2} />
+
+      <Card title="제도 구분" accent={C.f2}>
+        <Pick
+          label="우리 회사 퇴직연금 제도"
+          value={rp.type}
+          onChange={(v) => set({ type: v })}
+          options={[
+            { v: "DB", t: "DB형 (확정급여형) — 회사가 운용" },
+            { v: "DC", t: "DC형 (확정기여형) — 내가 운용" },
+          ]}
+          hint={isDB ? "퇴직 직전 3개월 평균임금 × 근속연수 — 마지막 급여가 전 기간에 적용돼요" : "매년 임금총액의 1/12를 회사가 넣고, 수익률은 내 몫이에요"}
+        />
+        <div className="grid grid-cols-2 gap-3">
+          <DateIn label="입사일" value={rp.join} onChange={(v) => set({ join: v })} />
+          <DateIn label="퇴직예정일" value={rp.retire} onChange={(v) => set({ retire: v })} />
+        </div>
+        <Row k="예상 근속기간" v={ym(r.years)} sub={r.months + "개월 · 입·퇴사한 달은 만근 처리"} />
+      </Card>
+
+      {isDB ? (
+        <Card title="DB형 입력" accent={C.f2} tag="DB">
+          <Num label="퇴직시점 예상 월급여" value={rp.salary} onChange={(v) => set({ salary: v })} hint="지금 급여가 아니라 퇴직 직전 3개월에 받을 급여예요" />
+          <Num label="퇴직시점 예상 연간 상여금 (선택)" value={rp.bonus} onChange={(v) => set({ bonus: v })} hint="12로 나눠 월 평균임금에 더해요. 없으면 0" />
+          <div className="grid grid-cols-2 gap-3">
+            <Num label="현재 월급여" value={rp.curSalary} onChange={(v) => set({ curSalary: v })} hint="아래 버튼용" />
+            <Rate label="연평균 임금상승률" value={rp.salaryGrowth} onChange={(v) => set({ salaryGrowth: v })} />
+          </div>
+          <button
+            onClick={() => set({ salary: String(Math.round(toNum(rp.curSalary) * Math.pow(1 + toNum(rp.salaryGrowth) / 100, raiseCount))) })}
+            className="w-full mb-3 py-2 rounded-lg text-[12.5px]"
+            style={{ border: "1px solid " + C.f2, color: C.f2, background: "rgba(13,148,136,0.06)" }}
+          >
+            현재 급여로 퇴직시점 급여 계산해 넣기
+          </button>
+          <Row k="1개월분 평균임금" v={won(r.detail.monthlyAvg || 0)} sub="평균 월급여 + 연간 상여금 ÷ 12" />
+          <Row k="예상 퇴직급여" v={big(r.lump)} strong color={C.f2} sub={"1개월분 평균임금 × " + r.months + "개월 ÷ 12"} />
+          <Note>근속기간을 월 단위 만근으로 세는 방식이에요. 법정 산식(1일 평균임금 × 30일 × 재직일수/365)보다 조금 높게 나올 수 있어요.</Note>
+        </Card>
+      ) : (
+        <Card title="DC형 입력" accent={C.f2} tag="DC">
+          <Num label="현재 연간임금총액" value={rp.curAnnual} onChange={(v) => set({ curAnnual: v })} hint="올해 받는 급여·상여 총액. 이 금액의 1/12가 올해 회사 부담금" />
+          <Num label="퇴직시점 예상 연간임금총액" value={rp.endAnnual} onChange={(v) => set({ endAnnual: v })} hint="사이 기간은 직선으로 이어서 매년 임금을 추정해요" />
+          <Num label="현재 적립금 (선택)" value={rp.curBalance} onChange={(v) => set({ curBalance: v })} hint="비워두면 근속기간으로 근사치를 잡아요" />
+          <Rate label="예상 운용수익률 (연)" value={rp.rate} onChange={(v) => set({ rate: v })} hint="DC형은 수익률이 곧 퇴직금이에요" />
+          <Row k="적립 완료 기간" v={ym(r.detail.past || 0)} sub="입사 ~ 오늘" />
+          <Row k="남은 적립 기간" v={ym(r.detail.left || 0)} sub="오늘 ~ 퇴직예정일" />
+          <Row k="연평균 임금상승률" v={((r.detail.wageGrowth || 0) * 100).toFixed(2) + "%"} color={C.dim} sub="두 임금총액에서 역산했어요" />
+          <Row k="앞으로 낼 부담금 합계" v={big(r.detail.contribSum || 0)} color={C.dim} sub={"매년 임금총액의 1/12 · " + (r.detail.years || 0) + "회"} />
+          <Row k="예상 퇴직급여" v={big(r.lump)} strong color={C.f2} sub="현재 적립금 + 앞으로의 부담금 + 운용수익" />
+          <Note>부담금은 매년 연말에 한 번 납입하고, 그 이후부터 연 복리로 운용된다고 봐요. 마지막 해 부담금에는 이자가 붙지 않아요.</Note>
+        </Card>
+      )}
+
+      <Card title="연금으로 받을 계획" accent={C.f2}>
+        <Num label="연금 수령기간" value={rp.payYears} onChange={(v) => set({ payYears: v })} unit="년" plain maxLen={2} hint="10년 이상 나눠 받으면 퇴직소득세가 40% 감면돼요" />
+        <Rate label="적용이율" value={rp.payRate} onChange={(v) => set({ payRate: v })} hint="수령기간 동안 적립금에 붙는 이율" />
+        <Row k="예상 연 수령액" v={won(ann.yearly)} sub="세전" />
+        <Row k="예상 월 수령액" v={won(ann.monthly)} strong color={C.f2} sub="세전 · 연 수령액 ÷ 12" />
+        <Note>보험연금 중 확정연금(정해진 기간 동안 나눠 받는 방식)을 기준으로 계산했어요. 매 회차 첫날 지급하는 기수불 복리 산식입니다.</Note>
+        <Note>퇴직급여 계산은 법정 최소 기준이에요. 회사 규정(누진제·중간정산 이력)이 있으면 실제 금액과 달라질 수 있어요.</Note>
+      </Card>
+
+      <HelpBar onAsk={onAsk} placeholder="예: DB형과 DC형 중 뭐가 유리해요?" />
+    </div>
+  );
+}
+
+/* ── 화면 3 · 개인연금 ────────────────────────────────────── */
+function ScreenPP({ pp, set, onAsk }) {
+  const r = calcPP(pp);
+  return (
+    <div>
+      <ScreenHead eyebrow="STEP 3" title="개인연금" desc="내가 직접 넣고 굴리는 개인형 IRP — 부족분은 여기서 메워요" color={C.f3} />
+
+      <Card title="적립 정보" accent={C.f3} tag="개인형 IRP">
+        <div className="grid grid-cols-2 gap-3">
+          <DateIn label="가입일" value={pp.join} onChange={(v) => set({ join: v })} />
+          <DateIn label="연금개시예정일" value={pp.start} onChange={(v) => set({ start: v })} />
+        </div>
+        <Num label="현재 적립금" value={pp.balance} onChange={(v) => set({ balance: v })} hint="수익 포함 잔액" />
+        <Num label="연 납입액" value={pp.yearly} onChange={(v) => set({ yearly: v })} hint={"월 " + won(toNum(pp.yearly) / 12) + " · 세액공제는 연 900만원까지"} />
+        <Rate label="예상 운용수익률 (연)" value={pp.rate} onChange={(v) => set({ rate: v })} hint="보수적으로 3~4%를 권해요" />
+
+        <Row k="남은 적립기간" v={ym(r.left)} sub={"오늘 ~ 연금개시일 · " + r.years + "회 납입"} />
+        <Row k="현재 적립금의 미래가치" v={big(r.balFV)} color={C.dim} />
+        <Row k="앞으로 낼 납입액 합계" v={big(r.contribSum)} color={C.dim} />
+        <Row k="예상 연금적립액" v={big(r.fv)} strong color={C.f3} sub={"내 돈 " + big(r.paidIn) + " + 앞으로 붙을 운용수익 " + big(r.profit)} />
+        <Note>납입금은 매년 연말에 한 번 넣고, 그 이후부터 연 복리로 운용된다고 봐요. 퇴직연금 DC형과 같은 방식이에요.</Note>
+      </Card>
+
+      <Card title="연금으로 받을 계획" accent={C.f3}>
+        <Num
+          label="연금 수령기간"
+          value={pp.payYears}
+          onChange={(v) => set({ payYears: v })}
+          unit="년"
+          plain
+          maxLen={2}
+          hint={r.endDate ? "수령종료 예정일 " + iso(r.endDate) + " · 10년 이상이어야 낮은 세율이 적용돼요" : "개시일을 먼저 입력하세요"}
+        />
+        <Rate label="적용이율" value={pp.payRate} onChange={(v) => set({ payRate: v })} hint="수령기간 동안 적립금에 붙는 이율" />
+        <Row k="예상 연 수령액" v={won(r.yearlyPay)} sub="세전" />
+        <Row k="예상 월 수령액" v={won(r.monthly)} strong color={C.f3} sub="세전 · 연 수령액 ÷ 12" />
+        <Note>보험연금 중 확정연금(정해진 기간 동안 나눠 받는 방식)을 기준으로 계산했어요. 매 회차 첫날 지급하는 기수불 복리 산식입니다.</Note>
+        <Note>만 55세 이후 · 가입 5년 경과 · 10년 이상 나눠 받아야 낮은 연금소득세율(3.3~5.5%)이 적용돼요.</Note>
+      </Card>
+
+      <HelpBar onAsk={onAsk} placeholder="예: IRP는 언제부터 받을 수 있어요?" />
+    </div>
+  );
+}
+
+/* ── 시그니처: 연금 입면도 ────────────────────────────────── */
+function Building({ floors, need }) {
+  const total = floors.reduce((s, f) => s + f.amount, 0);
+  const top = Math.max(total, need) * 1.18 || 1;
+  const H = 210;
+  const px = (v) => Math.max(v > 0 ? 26 : 0, (v / top) * H);
+  const needY = (need / top) * H;
+
+  return (
+    <div className="relative pt-2" style={{ paddingRight: 8 }}>
+      <div className="relative" style={{ height: H + 26 }}>
+        {/* 필요생활비 기준선 */}
+        <div className="absolute left-0 right-0 flex items-center" style={{ bottom: needY + 26, zIndex: 3 }}>
+          <div className="flex-1" style={{ borderTop: "1px dashed " + C.warn }} />
+          <span className="text-[10px] pl-2 whitespace-nowrap" style={{ color: C.warn, fontFamily: FONT_NUM }}>
+            필요 {big(need)}
+          </span>
+        </div>
+        {/* 층 */}
+        <div className="absolute left-0 right-0 bottom-0 flex flex-col justify-end" style={{ height: H + 26 }}>
+          <div className="flex flex-col">
+            {floors.map((f) => (
+              <div
+                key={f.n}
+                className="relative flex items-center justify-between px-3"
+                style={{
+                  height: px(f.amount),
+                  background: f.amount > 0 ? f.color + "1a" : "transparent",
+                  borderTop: "1px solid " + f.color,
+                  borderLeft: "1px solid " + f.color + "66",
+                  borderRight: "1px solid " + f.color + "66",
+                  transition: "height 400ms ease",
+                }}
+              >
+                <span className="text-[11px]" style={{ color: f.color }}>
+                  <span style={{ fontFamily: FONT_NUM }}>{f.n}층</span> · {f.label}
+                </span>
+                <span className="text-[12px]" style={{ fontFamily: FONT_NUM, color: C.text }}>{won(f.amount)}</span>
+              </div>
+            ))}
+          </div>
+          {/* 지반선 */}
+          <div style={{ height: 26, borderTop: "2px solid " + C.line2, background: "repeating-linear-gradient(115deg, rgba(21,44,82,0.18) 0 1px, transparent 1px 7px)" }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── 화면 4 · 연금컨설팅 ──────────────────────────────────── */
+function ScreenPlan({ st, set, onAsk }) {
+  const np = calcNP(st.np);
+  const rp = calcRP(st.rp);
+  const irp = calcPP(st.pp);
+  const birth = D(st.np.birth);
+  const need = toNum(st.plan.need);
+  const retireAge = toNum(st.plan.retireAge) || 60;
+
+  const ageOf = (d) => (birth && d ? yearsBetween(birth, d) : null);
+  const rpStart = Math.max(retireAge, 55);
+  const rpYears = toNum(st.rp.payYears) || 10;
+  const rpMonthly = annuityCertain(rp.lump, rpYears, toNum(st.rp.payRate)).monthly;
+
+  const streams = [
+    { key: "np", n: 1, label: "국민연금", color: C.f1, start: np.startAge, end: 200, monthly: np.eligible ? np.monthly : 0 },
+    { key: "rp", n: 2, label: "퇴직연금", color: C.f2, start: rpStart, end: rpStart + rpYears, monthly: rpMonthly },
+    { key: "irp", n: 3, label: "개인연금", color: C.f3, start: ageOf(irp.start) ?? 60, end: (ageOf(irp.start) ?? 60) + (toNum(st.pp.payYears) || 10), monthly: irp.monthly },
+  ];
+
+  // 구간 나누기
+  const marks = [retireAge, 90];
+  streams.forEach((s) => { [s.start, s.end].forEach((a) => { if (a > retireAge && a < 90) marks.push(a); }); });
+  const pts = [...new Set(marks.map((m) => Math.round(m * 10) / 10))].sort((a, b) => a - b);
+  const segs = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const from = pts[i], to = pts[i + 1];
+    if (to - from < 0.4) continue;
+    const mid = (from + to) / 2;
+    const parts = streams.filter((s) => mid >= s.start && mid < s.end && s.monthly > 0);
+    const sum = parts.reduce((a, s) => a + s.monthly, 0);
+    segs.push({ from, to, parts, sum, rate: need > 0 ? sum / need : 0 });
+  }
+  const worst = segs.length ? segs.reduce((a, b) => (a.rate <= b.rate ? a : b)) : null;
+  const steady = segs.length ? segs.reduce((a, b) => (a.sum >= b.sum ? a : b)) : null;
+
+  const floors = [
+    { n: 3, label: "개인연금", color: C.f3, amount: (steady?.parts || []).filter((p) => p.n === 3).reduce((a, s) => a + s.monthly, 0) },
+    { n: 2, label: "퇴직연금", color: C.f2, amount: (steady?.parts || []).filter((p) => p.n === 2).reduce((a, s) => a + s.monthly, 0) },
+    { n: 1, label: "국민연금", color: C.f1, amount: (steady?.parts || []).filter((p) => p.n === 1).reduce((a, s) => a + s.monthly, 0) },
+  ];
+
+  // 처방
+  const tips = [];
+  if (worst && need > 0 && worst.sum < need) {
+    const gap = need - worst.sum;
+    const years = worst.to - worst.from;
+    const accumYears = Math.max(0.5, (ageOf(irp.start) ?? 60) - yearsBetween(birth || NOW, NOW));
+    const target = lumpFromMonthly(gap, years, toNum(st.pp.payRate));
+    const addMonthly = monthlyToReach(target, accumYears, toNum(st.pp.rate));
+    const tail = !worst.parts.some((p) => p.n === 3);
+    if (tail) {
+      tips.push({
+        t: "개인연금 수령기간을 늘리거나 종신형을 섞기",
+        d: "이 구간엔 국민연금만 남아요. 개인연금 수령기간을 30년으로 늘리면 월 수령액은 줄지만 공백이 사라져요. 사망할 때까지 나오는 종신형 연금보험을 일부 섞는 것도 방법이에요.",
+      });
+    }
+    tips.push({
+      t: "개인연금 월 납입액을 " + won(Math.ceil(addMonthly / 10000) * 10000) + " 늘리기",
+      d: Math.round(worst.from) + "~" + Math.round(worst.to) + "세 구간의 부족액 " + won(gap) + "을 메우려면, 지금부터 " + accumYears.toFixed(0) + "년간 추가로 이만큼 넣어야 해요. (필요 재원 " + big(target) + ")",
+    });
+    const paid = toNum(st.pp.yearly) / 12;
+    if (paid * 12 < 9000000) {
+      tips.push({
+        t: "세액공제 한도부터 채우기",
+        d: "현재 연 " + big(paid * 12) + " 납입 중이에요. 연 900만원까지는 13.2~16.5%를 돌려받으니, 한도 안에서 늘리는 게 가장 수익률 높은 선택이에요.",
+      });
+    }
+    if (np.startAge > worst.to - 0.5 && worst.from < np.startAge) {
+      tips.push({
+        t: "퇴직연금 수령기간을 " + Math.max(1, Math.round(np.startAge - rpStart)) + "년으로 조정",
+        d: "은퇴 후 국민연금 개시 전까지가 소득 크레바스예요. 퇴직연금을 이 구간에 몰아서 받으면 공백을 메울 수 있어요. 다만 10년 미만이면 퇴직소득세 감면이 40%에서 30%로 줄어요.",
+      });
+    }
+    tips.push({
+      t: "은퇴 시점을 늦추거나 국민연금을 연기하기",
+      d: "국민연금은 최대 5년 연기하면 1년당 7.2%, 총 36% 늘어나요. 퇴직 후 소득이 있다면 임의계속가입도 방법이에요.",
+    });
+  } else if (need > 0) {
+    tips.push({ t: "목표 달성", d: "모든 구간에서 필요생활비를 넘겨요. 남는 여력은 의료비·간병비 대비나 인출 시점 분산에 쓰는 걸 권해요." });
+  }
+
+  return (
+    <div>
+      <ScreenHead eyebrow="STEP 4" title="연금 컨설팅" desc="1~3층을 쌓아 필요생활비 선에 닿는지 확인해요" color={C.text} />
+
+      <Card title="기본 정보" accent={C.text}>
+        <div className="grid grid-cols-2 gap-3">
+          <Num label="예상 은퇴나이" value={st.plan.retireAge} onChange={(v) => set({ retireAge: v })} unit="세" />
+          <Num label="월 필요생활비" value={st.plan.need} onChange={(v) => set({ need: v })} />
+        </div>
+      </Card>
+
+      <Card
+        title="층별 예상 월 수령액"
+        accent={C.f1}
+        tag={steady ? Math.round(steady.from) + "–" + Math.round(steady.to) + "세" : "—"}
+      >
+        <Building floors={floors} need={need} />
+        <div className="mt-4">
+          {floors.slice().reverse().map((f) => (
+            <Row
+              key={f.n}
+              k={f.n + "층 · " + f.label}
+              v={won(f.amount)}
+              color={f.amount > 0 ? f.color : C.dim}
+              sub={f.amount > 0 ? Math.round((f.amount / (steady?.sum || 1)) * 100) + "% 비중" : "이 구간엔 수령 없음"}
+            />
+          ))}
+          <Row k="합계 월 수령액" v={won(steady?.sum || 0)} strong color={(steady?.sum || 0) >= need ? C.ok : C.warn} />
+          <Row k="필요생활비 대비" v={Math.round((steady?.rate || 0) * 100) + "%"} sub={(steady?.sum || 0) >= need ? "충족" : "부족 " + won(need - (steady?.sum || 0))} />
+        </div>
+        <Note>세 층이 가장 두껍게 겹치는 구간이에요. 빨간 점선이 필요생활비, 건물 높이가 실제 수령액이에요.</Note>
+      </Card>
+
+      <Card title="나이대별 수령 흐름" accent={C.f2}>
+        {segs.map((s, i) => {
+          const okk = s.sum >= need;
+          return (
+            <div key={i} className="py-2.5" style={{ borderTop: "1px solid " + C.line }}>
+              <div className="flex items-baseline justify-between mb-1.5">
+                <span className="text-[13px]" style={{ fontFamily: FONT_NUM, color: C.text }}>
+                  {Math.round(s.from)}–{Math.round(s.to)}세
+                </span>
+                <span className="text-[14px]" style={{ fontFamily: FONT_NUM, color: okk ? C.ok : C.warn }}>
+                  {won(s.sum)} {okk ? "" : "· " + Math.round(s.rate * 100) + "%"}
+                </span>
+              </div>
+              <div className="flex h-2 rounded-full overflow-hidden" style={{ background: "rgba(21,44,82,0.07)" }}>
+                {s.parts.map((p, j) => (
+                  <div key={j} style={{ width: (need > 0 ? Math.min(100, (p.monthly / need) * 100) : 0) + "%", background: p.color }} />
+                ))}
+              </div>
+              <div className="mt-1.5 text-[11px]" style={{ color: C.dim }}>
+                {s.parts.length ? s.parts.map((p) => p.label).join(" + ") : "수령 없음 — 소득 공백"}
+              </div>
+            </div>
+          );
+        })}
+        <Note>막대는 필요생활비를 100%로 본 비율이에요. 색은 층 색과 같아요.</Note>
+      </Card>
+
+      <Card title="처방" accent={worst && worst.sum < need ? C.warn : C.ok}>
+        <div className="flex items-center gap-2 mb-2">
+          {worst && worst.sum < need
+            ? <><AlertTriangle size={16} color={C.warn} /><span className="text-[14px]" style={{ color: C.warn }}>가장 취약한 구간: {Math.round(worst.from)}–{Math.round(worst.to)}세</span></>
+            : <><Check size={16} color={C.ok} /><span className="text-[14px]" style={{ color: C.ok }}>전 구간 충족</span></>}
+        </div>
+        {tips.map((t, i) => (
+          <div key={i} className="py-2.5" style={{ borderTop: "1px solid " + C.line }}>
+            <div className="text-[14px] font-medium mb-1" style={{ color: C.text }}>{t.t}</div>
+            <div className="text-[12px] leading-relaxed" style={{ color: C.dim }}>{t.d}</div>
+          </div>
+        ))}
+      </Card>
+
+      <HelpBar onAsk={onAsk} placeholder="예: 노후에 얼마가 필요해요?" />
+    </div>
+  );
+}
+
+/* ── 화면 5 · 챗봇 (하드코딩 Q&A) ─────────────────────────── */
+const QA = [
+  { c: "국민연금", q: "국민연금은 몇 살부터 받나요?", k: ["국민연금", "수급", "개시", "몇살", "나이", "언제"],
+    a: "출생연도로 정해져요.\n· 1953~56년생 61세\n· 1957~60년생 62세\n· 1961~64년생 63세\n· 1965~68년생 64세\n· 1969년 이후 65세\n\n최소 가입기간 10년(120개월)을 채워야 노령연금을 받을 수 있어요." },
+  { c: "국민연금", q: "A값이 뭔가요?", k: ["a값", "평균소득", "전체가입자"],
+    a: "전체 국민연금 가입자의 최근 3년 평균소득월액이에요. 연금액 공식 1.2 × (A + B) 에서 A에 들어가는 값으로, 소득재분배 역할을 해요.\n\n매년 7월에 새로 고시되니 1F 화면에서 직접 수정할 수 있게 해뒀어요." },
+  { c: "국민연금", q: "B값은 어떻게 계산했나요?", k: ["b값", "기준소득월액", "역산"],
+    a: "B값은 내 가입기간 전체의 평균 기준소득월액이에요.\n\n이 앱은 입력한 총 납입금액 ÷ 총 납입월수 ÷ 9%로 역산해요. 보험료가 기준소득월액의 9%이기 때문이에요. 포털에 표시된 값이 따로 있으면 그게 더 정확해요." },
+  { c: "국민연금", q: "보험료 9%는 누가 내나요?", k: ["9%", "보험료", "누가", "부담"],
+    a: "직장가입자는 회사와 본인이 4.5%씩 나눠 내요. 급여명세서에 찍히는 건 절반이지만, 연금액 계산에는 9% 전액이 반영돼요.\n\n지역가입자는 9%를 전액 본인이 부담해요." },
+  { c: "국민연금", q: "조기수령이나 연기연금이 유리한가요?", k: ["조기", "연기", "당겨", "미뤄"],
+    a: "· 조기노령연금: 최대 5년 당기면 1년당 6% 감액(최대 30%)되고 평생 이어져요.\n· 연기연금: 최대 5년 늦추면 1년당 7.2% 증액(최대 36%)돼요.\n\n건강하고 다른 소득이 있다면 연기가, 당장 생활비가 급하면 조기가 유리해요. 손익분기는 보통 75~80세 부근이에요." },
+  { c: "퇴직연금", q: "DB형과 DC형은 뭐가 다른가요?", k: ["db", "dc", "차이", "다른"],
+    a: "· DB형(확정급여형): 퇴직 직전 3개월 평균임금 × 근속연수. 운용은 회사가 하고 손익도 회사 몫이에요. 임금상승률이 높으면 유리해요.\n· DC형(확정기여형): 회사가 매년 임금총액의 1/12을 내 계좌에 넣고, 운용 결과가 곧 내 퇴직금이에요. 수익률이 임금상승률보다 높으면 유리해요.\n\n임금피크제가 있다면 DB형은 평균임금이 깎이므로 전환 시점을 따져봐야 해요." },
+  { c: "퇴직연금", q: "DB형 퇴직금은 어떻게 계산해요?", k: ["db", "계산", "평균임금", "퇴직금"],
+    a: "1일 평균임금 × 30일 × (재직일수 ÷ 365)\n\n1일 평균임금은 퇴직 직전 3개월 임금총액 ÷ 그 기간 총일수예요. 연간 상여금은 3/12만 더해요. 이 앱은 3개월을 91.25일로 잡아 계산해요." },
+  { c: "퇴직연금", q: "DC형은 회사가 얼마를 넣나요?", k: ["dc", "부담금", "얼마", "1/12"],
+    a: "매년 연간임금총액의 1/12 이상이에요. 연봉 6,000만원이면 그해 500만원이 들어가요.\n\n임금이 오르면 부담금도 같이 오르고, 그 뒤로는 내가 고른 상품의 수익률이 붙어요." },
+  { c: "퇴직연금", q: "퇴직금을 일시금으로 받으면 손해인가요?", k: ["일시금", "연금", "손해", "세금", "퇴직소득세"],
+    a: "세금 차이가 커요. 퇴직급여를 IRP에서 연금으로 받으면 퇴직소득세를 10년까지는 30%, 11년째부터는 40% 깎아줘요.\n\n일시금으로 받으면 감면 없이 퇴직소득세를 전액 내요. 급하게 쓸 데가 없다면 연금 수령이 유리해요." },
+  { c: "퇴직연금", q: "근속연수공제가 뭐예요?", k: ["근속연수공제", "근속공제"],
+    a: "오래 일할수록 세금을 덜 내도록 퇴직급여에서 먼저 빼주는 금액이에요.\n· 5년 이하: 1년당 100만원\n· 6~10년: 500만원 + 5년 초과분 1년당 200만원\n· 11~20년: 1,500만원 + 10년 초과분 1년당 250만원\n· 20년 초과: 4,000만원 + 20년 초과분 1년당 300만원\n\n근속연수는 1년 미만이 남아도 1년으로 올려서 계산해요." },
+  { c: "퇴직연금", q: "환산급여는 왜 계산해요?", k: ["환산급여", "왜 12", "연분연승"],
+    a: "퇴직금은 여러 해에 걸쳐 쌓인 돈인데 한 해에 몰아서 받아요. 그대로 누진세율을 매기면 세금이 과하게 나오죠.\n\n그래서 1년치로 환산해 세율을 매기고 다시 근속연수만큼 곱해요. (퇴직소득 − 근속연수공제) × 12 ÷ 근속연수로 환산급여를 구한 뒤, 여기서 환산급여공제를 또 빼고 기본세율을 적용해요." },
+  { c: "퇴직연금", q: "이연퇴직소득세가 뭐예요?", k: ["이연", "이연퇴직소득세"],
+    a: "퇴직급여를 IRP 같은 연금계좌로 바로 이체하면 그 시점에 세금을 떼지 않고 미뤄줘요. 그 미뤄둔 세금이 이연퇴직소득세예요.\n\n신고대상세액 × 계좌입금액 ÷ 과세대상 퇴직급여로 계산해요. 전액 이체하면 지금 낼 세금이 0원이 되고, 나중에 연금으로 받을 때 30~50% 깎인 금액만 내요." },
+  { c: "개인연금", q: "연금수령한도가 뭐예요?", k: ["수령한도", "한도", "얼마까지"],
+    a: "연금계좌에서 낮은 세율로 뺄 수 있는 연간 상한이에요.\n\n계좌 평가액 ÷ (11 − 연금수령연차) × 120%\n\n한도를 넘겨 찾은 금액은 연금 외 수령으로 봐서 세금이 무거워져요. 연금수령연차가 11년차를 넘으면 한도가 아예 없어집니다." },
+  { c: "개인연금", q: "2013년 3월 1일이 왜 중요해요?", k: ["2013", "3월 1일", "기산연차", "6년차"],
+    a: "그 전에 가입한 연금계좌는 연금수령연차를 1년차가 아니라 6년차부터 세요.\n\n출발점이 5년 앞서니 한도가 훨씬 넉넉하고, 11년차(퇴직소득세 40% 감면)에도 빨리 닿아요. 퇴직급여를 IRP로 옮긴 경우엔 IRP 개설일이 아니라 회사 퇴직연금(DB/DC) 가입일로 판정합니다." },
+  { c: "개인연금", q: "IRP와 연금저축은 뭐가 다른가요?", k: ["irp", "연금저축", "차이", "다른"],
+    a: "· 세액공제: 연금저축 600만원 + IRP 포함 합산 900만원까지.\n· 투자 제한: IRP는 위험자산 70% 한도가 있고, 연금저축은 제한이 없어요.\n· 중도인출: IRP는 법정 사유만 가능하고, 연금저축은 상대적으로 자유롭지만 기타소득세 16.5%를 내요.\n· 가입: IRP는 소득이 있어야 하고, 연금저축은 누구나 가능해요." },
+  { c: "개인연금", q: "세액공제는 얼마나 받나요?", k: ["세액공제", "환급", "얼마", "900"],
+    a: "연 900만원 한도(연금저축은 그중 600만원까지)예요.\n\n총급여 5,500만원 이하는 16.5%, 초과는 13.2%를 돌려받아요. 900만원을 꽉 채우면 118만~148만원이에요. 어떤 상품보다 확실한 수익이라 한도부터 채우는 걸 권해요." },
+  { c: "개인연금", q: "연금 수령 조건이 뭔가요?", k: ["수령조건", "55", "10년", "조건"],
+    a: "세 가지를 모두 채워야 연금소득세율이 적용돼요.\n1) 만 55세 이후 개시\n2) 가입 후 5년 경과 (퇴직급여 재원은 예외)\n3) 10년 이상 나눠 수령\n\n또 연간 수령한도를 넘겨 찾으면 그 초과분은 낮은 세율을 못 받아요." },
+  { c: "개인연금", q: "연금 받을 때 세금은요?", k: ["연금소득세", "세율", "3.3", "5.5", "세금"],
+    a: "사적연금은 나이에 따라 5.5%(55~69세) → 4.4%(70~79세) → 3.3%(80세~)로 낮아져요.\n\n사적연금 수령액이 연 1,500만원을 넘으면 전액을 종합과세하거나 16.5% 분리과세 중에 고를 수 있어요. IRP와 연금저축의 개시 시점을 나누면 이 선을 관리할 수 있어요." },
+  { c: "개인연금", q: "수익률은 몇 %로 잡아야 하나요?", k: ["수익률", "몇%", "가정", "얼마로"],
+    a: "정답은 없지만, 원리금보장형 위주면 3% 안팎, 주식형을 섞으면 4~6%를 보수적으로 잡는 편이에요.\n\n적립기간 수익률과 수령기간 수익률을 나눠 입력하게 해뒀어요. 받기 시작할 때는 보통 더 안전하게 굴리니까요. 높게 잡으면 계획이 낙관적으로 보이니 낮춰 보는 습관이 좋아요." },
+  { c: "개인연금", q: "중도에 해지하면 어떻게 되나요?", k: ["해지", "중도", "인출", "깨면"],
+    a: "세액공제를 받은 원금과 운용수익 전체에 기타소득세 16.5%가 붙어요. 돌려받은 세금보다 더 토해낼 수 있어요.\n\n무주택자 주택 구입, 6개월 이상 요양, 파산 등 법정 사유면 낮은 세율로 인출할 수 있어요." },
+  { c: "연금설계", q: "소득 크레바스가 뭔가요?", k: ["크레바스", "공백", "은퇴후", "공백기"],
+    a: "퇴직한 뒤 국민연금이 나오기 전까지 소득이 비는 구간이에요. 60세 은퇴 · 65세 수급이면 5년이 비죠.\n\n이 구간은 퇴직연금과 개인연금으로 메우는 게 기본이에요. 감리 화면의 나이대별 흐름에서 이 구간이 빨갛게 보이면 퇴직연금 수령기간을 크레바스 길이에 맞춰 조정해 보세요." },
+  { c: "연금설계", q: "노후에 얼마가 필요한가요?", k: ["생활비", "얼마", "필요", "적정"],
+    a: "국민연금공단 조사 기준으로 부부 최소 약 200만원 · 적정 약 320만원, 개인 최소 약 120만원 · 적정 약 200만원 선이에요.\n\n다만 주거 형태와 의료비에 따라 편차가 커요. 지금 생활비의 70~80%를 시작점으로 잡고 조정해 보세요." },
+  { c: "연금설계", q: "물가상승은 반영되나요?", k: ["물가", "인플레", "현재가치"],
+    a: "지금 계산은 현재가치 기준이에요. 즉 '오늘 돈으로 이만큼'이라는 뜻이에요.\n\n국민연금은 물가에 연동돼 오르지만, 퇴직·개인연금은 그렇지 않아요. 그래서 필요생활비도 오늘 기준으로 넣고 비교하는 게 오히려 덜 헷갈려요. 미래 금액이 궁금하면 필요생활비에 물가상승률을 곱해 넣어 보세요." },
+  { c: "연금설계", q: "3층 연금이 뭔가요?", k: ["3층", "삼층", "구조", "무엇"],
+    a: "· 1층 국민연금 — 국가가 보장하는 기초. 물가에 연동되고 평생 나와요.\n· 2층 퇴직연금 — 회사가 쌓아주는 층. DB/DC로 나뉘어요.\n· 3층 개인연금 — 내가 직접 쌓는 층. 부족분을 메우고 세액공제도 받아요.\n\n1·2층은 대체로 정해져 있어서, 계획으로 바꿀 수 있는 건 3층이에요." },
+  { c: "연금설계", q: "부족하면 뭘 먼저 해야 하나요?", k: ["부족", "추천", "먼저", "어떻게"],
+    a: "순서를 이렇게 권해요.\n1) 세액공제 한도(연 900만원)부터 채우기 — 확정 수익이에요.\n2) 퇴직연금 수령기간을 크레바스에 맞추기 — 돈을 더 안 넣고 배분만 바꾸는 방법이에요.\n3) 국민연금 연기·임의계속가입 — 평생 받는 층을 키워요.\n4) 은퇴 시점 조정 — 1년만 늦춰도 적립은 늘고 인출기간은 줄어요.\n5) 그래도 부족하면 주택연금까지 검토해요." },
+];
+
+function findAnswer(text) {
+  const t = text.toLowerCase().replace(/\s/g, "");
+  let best = null, score = 0;
+  QA.forEach((item) => {
+    let s = 0;
+    item.k.forEach((k) => { if (t.includes(k.toLowerCase())) s += 2; });
+    if (t.includes(item.q.slice(0, 6))) s += 3;
+    if (s > score) { score = s; best = item; }
+  });
+  return score >= 2 ? best : null;
+}
+
+function ScreenChat({ log, setLog, pending, clearPending }) {
+  const endRef = useRef(null);
+
+  const send = (text) => {
+    const found = findAnswer(text);
+    const reply = found
+      ? { role: "bot", text: found.a, title: found.q }
+      : { role: "bot", text: "아직 준비된 답이 없는 질문이에요. 아래 목록에서 골라보시겠어요? 새 질문은 Q&A 목록에 추가할 수 있어요.", suggest: true };
+    setLog((L) => [...L, { role: "me", text }, reply]);
+  };
+
+  useEffect(() => {
+    if (pending) { send(pending); clearPending(); }
+  }, [pending]);
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [log]);
+
+  const [q, setQ] = useState("");
+  const submit = () => { if (q.trim()) { send(q.trim()); setQ(""); } };
+
+  return (
+    <div>
+      <ScreenHead eyebrow="STEP 7" title="챗봇" desc="자주 묻는 질문에 정해진 답으로 대답해요" color={C.dim} />
+
+      <div className="mb-4">
+        {log.length === 0 && (
+          <Card title="이런 걸 물어보세요" accent={C.dim}>
+            {["국민연금", "퇴직연금", "개인연금", "연금설계"].map((cat) => (
+              <div key={cat} className="mb-3">
+                <div className="text-[11px] mb-1.5 tracking-widest" style={{ color: C.dim, fontFamily: FONT_NUM }}>{cat}</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {QA.filter((x) => x.c === cat).map((x, i) => (
+                    <button key={i} onClick={() => send(x.q)}
+                      className="text-[12px] px-2.5 py-1.5 rounded-full text-left"
+                      style={{ border: "1px solid " + C.line2, color: C.text }}>
+                      {x.q}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </Card>
+        )}
+
+        {log.map((m, i) => (
+          <div key={i} className={"flex mb-2.5 " + (m.role === "me" ? "justify-end" : "justify-start")}>
+            <div
+              className="max-w-[86%] rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-relaxed whitespace-pre-line"
+              style={
+                m.role === "me"
+                  ? { background: C.f1, color: "#FFFFFF", borderBottomRightRadius: 6 }
+                  : { background: C.panel, color: C.text, border: "1px solid " + C.line, borderBottomLeftRadius: 6, boxShadow: "0 1px 3px rgba(21,44,82,0.05)" }
+              }
+            >
+              {m.title && <div className="text-[11px] mb-1.5 pb-1.5" style={{ color: C.dim, borderBottom: "1px solid " + C.line }}>{m.title}</div>}
+              {m.text}
+              {m.suggest && (
+                <div className="flex flex-wrap gap-1.5 mt-2.5">
+                  {QA.slice(0, 5).map((x, j) => (
+                    <button key={j} onClick={() => send(x.q)} className="text-[11.5px] px-2 py-1 rounded-full"
+                      style={{ border: "1px solid " + C.line2, color: C.text }}>{x.q}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+        <div ref={endRef} />
+      </div>
+
+      {log.length > 0 && (
+        <button onClick={() => setLog([])} className="flex items-center gap-1.5 text-[12px] mb-3" style={{ color: C.dim }}>
+          <RotateCcw size={12} /> 대화 지우기
+        </button>
+      )}
+
+      <div className="flex gap-2 sticky bottom-0 pb-1" style={{ background: C.ink }}>
+        <input
+          className="flex-1 rounded-lg px-3 py-2.5 text-[14px] outline-none"
+          style={{ ...inputStyle, fontFamily: FONT_UI }}
+          value={q} placeholder="질문을 입력하세요"
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+        />
+        <button onClick={submit} className="px-4 rounded-lg shrink-0" style={{ background: C.f1, color: "#FFFFFF" }}>
+          <Send size={16} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+/* ── 화면 5 · 퇴직소득세 계산기 ──────────────────────────── */
+function ScreenTax({ tax, set, rp, onAsk }) {
+  const r = calcTax(tax);
+  const pull = () => {
+    const lump = Math.round(calcRP(rp).lump);
+    set({
+      startDate: rp.join,
+      endDate: rp.retire,
+      pay: String(lump),
+      irpAmount: String(Math.max(0, lump - toNum(tax.nontax))), // 전액 이체 기준으로 맞춰줌
+    });
+  };
+
+  return (
+    <div>
+      <ScreenHead eyebrow="STEP 5" title="퇴직소득세 계산기" desc="국세청 별지 제24호서식(2) 계산 순서를 그대로 따라요" color={C.f2} />
+
+      <Card title="퇴직급여 입력" accent={C.f2}>
+        <button onClick={pull} className="w-full mb-3 py-2 rounded-lg text-[12.5px]"
+          style={{ border: "1px solid " + C.f2, color: C.f2, background: "rgba(13,148,136,0.06)" }}>
+          퇴직연금 화면의 예상 퇴직급여 가져오기
+        </button>
+        <div className="grid grid-cols-2 gap-3">
+          <DateIn label="기산일" value={tax.startDate} onChange={(v) => set({ startDate: v })} hint="보통 입사일" />
+          <DateIn label="퇴사일" value={tax.endDate} onChange={(v) => set({ endDate: v })} />
+        </div>
+        <Num label="퇴직급여" value={tax.pay} onChange={(v) => set({ pay: v })} hint="법정외 퇴직급여 포함 총액" />
+        <Num label="비과세 퇴직급여" value={tax.nontax} onChange={(v) => set({ nontax: v })} hint="해당 없으면 0" />
+        <Row k="근속월수" v={r.months + "개월"} sub={"입·퇴사한 달은 만근 처리 · " + Math.floor(r.months / 12) + "년 " + (r.months % 12) + "개월"} />
+        <Row k="근속연수" v={r.years + "년"} sub={"(" + r.months + " − 제외 " + toNum(tax.exclude) + " + 가산 " + toNum(tax.add) + ") ÷ 12, 올림"} strong color={C.f2} />
+      </Card>
+
+      <Card title="조정 항목" accent={C.f2} tag="선택">
+        <div className="grid grid-cols-2 gap-3">
+          <Num label="제외월수" value={tax.exclude} onChange={(v) => set({ exclude: v })} unit="개월" plain maxLen={4} />
+          <Num label="가산월수" value={tax.add} onChange={(v) => set({ add: v })} unit="개월" plain maxLen={4} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Num label="기납부세액" value={tax.prepaid} onChange={(v) => set({ prepaid: v })} />
+          <Num label="세액공제" value={tax.credit} onChange={(v) => set({ credit: v })} />
+        </div>
+        <Note>중간정산으로 퇴직급여 산정에서 빠진 기간은 제외월수에, 그 반대는 가산월수에 넣어요.</Note>
+      </Card>
+
+      <Card title="세액 계산" accent={C.f2} tag="자동">
+        <Row k="과세대상 퇴직급여" v={won(r.taxable)} sub="퇴직급여 − 비과세" />
+        <Row k="근속연수공제" v={"− " + won(r.sDed)} sub={r.years + "년 · " + r.sDedRule} color={C.dim} />
+        <Row k="환산급여" v={won(r.conv)} sub="(과세대상 − 근속연수공제) × 12 ÷ 근속연수" />
+        <Row k="환산급여공제" v={"− " + won(r.cDed)} sub={r.cDedRule} color={C.dim} />
+        <Row k="과세표준" v={won(r.base)} strong />
+        <Row k="환산산출세액" v={won(r.convTax)} sub="과세표준 × 기본세율" />
+        <Row k="산출세액" v={won(r.gross)} sub="환산산출세액 ÷ 12 × 근속연수" strong color={C.f2} />
+        <Row k="신고대상세액" v={won(r.report)} sub="산출세액 − 기납부세액 − 세액공제" strong />
+        <Row k="실효세율" v={(r.effRate * 100).toFixed(2) + "%"} sub="지방소득세 포함, 과세대상 퇴직급여 대비" />
+      </Card>
+
+      <Card title="IRP로 받으면" accent={C.f3}>
+        <Num
+          label="연금계좌 입금액"
+          value={tax.irpAmount}
+          onChange={(v) => set({ irpAmount: v })}
+          right={r.taxable > 0 ? "과세대상의 " + Math.round((r.irpAmt / r.taxable) * 100) + "%" : ""}
+          hint="IRP·연금저축으로 이체하는 금액. 전액 이체하면 원천징수가 없어요"
+        />
+        {r.irpAmt < r.taxable && (
+          <button
+            onClick={() => set({ irpAmount: String(r.taxable) })}
+            className="w-full mb-3 py-2 rounded-lg text-[12.5px]"
+            style={{ border: "1px solid " + C.f3, color: C.f3, background: "rgba(180,116,7,0.06)" }}
+          >
+            전액 이체로 맞추기 ({won(r.taxable)})
+          </button>
+        )}
+        <Row k="이연퇴직소득세" v={won(r.deferred)} sub="신고대상세액 × 입금액 ÷ 과세대상 퇴직급여" color={C.f3} />
+        <Row k="지금 낼 소득세" v={won(r.withhold)} strong color={r.withhold === 0 ? C.ok : C.text} />
+        <Row k="지방소득세" v={won(r.local)} sub="소득세의 10%" />
+        <Row k="지금 낼 세금 합계" v={won(r.total)} strong color={r.total === 0 ? C.ok : C.warn} />
+        <Note>
+          이연된 세금은 나중에 연금으로 받을 때 나눠 내요. 이때 수령 연차에 따라 10년 이내는 30%, 11~20년차는 40%,
+          21년차부터는 50%를 깎아줘요. 10년에 걸쳐 받으면 약 {won(r.saved)}을 아끼고, 오래 나눠 받을수록 감면폭이 커져요.
+        </Note>
+      </Card>
+
+      <HelpBar onAsk={onAsk} placeholder="예: 근속연수공제가 뭐예요?" />
+    </div>
+  );
+}
+
+
+/* ── 화면 6 · 연금수령연차 ───────────────────────────────── */
+function ScreenAnnuity({ tax, set, setAnn, np, onAsk }) {
+  const birth = tax.birth || np.birth;
+  const a = tax.ann;
+  const y = calcAnnuityYear(a, birth, tax.year);
+  return (
+    <div>
+      <ScreenHead eyebrow="STEP 6" title="연금수령연차" desc="몇 년차인지 세어 수령한도와 감면율을 알려줘요" color={C.f3} />
+
+      <Card title="연금수령연차" accent={C.f3} tag={tax.year + "년 기준"}>
+        <div className="grid grid-cols-2 gap-3">
+          <DateIn label="생년월일" value={birth} onChange={(v) => set({ birth: v })} hint="만 55세 도달일 판정" />
+          <Num label="기준연도" value={tax.year} onChange={(v) => set({ year: v })} unit="년" plain maxLen={4} hint="몇 년차인지 볼 시점" />
+        </div>
+        <Note>연차는 과세기간(1~12월) 단위로 세요. 개시한 해가 1년차, 다음 해가 2년차예요.</Note>
+      </Card>
+
+      <Card title="연금수령연차" accent={C.f3} tag={y.started ? y.nth + "년차" : "미개시"}>
+        <div className="grid grid-cols-2 gap-3">
+          <DateIn label="계좌 개설일" value={a.open} onChange={(v) => setAnn({ open: v })} />
+          <DateIn label="연금개시예정일" value={a.start} onChange={(v) => setAnn({ start: v })} />
+        </div>
+        <Toggle
+          label="퇴직급여가 입금된 계좌"
+          checked={!!a.fromSeverance}
+          onChange={(v) => setAnn({ fromSeverance: v })}
+          hint="퇴직급여 재원은 가입 후 5년 요건이 면제되고, 퇴직연금 가입일을 계좌 가입일로 봐요"
+        />
+        {a.fromSeverance && (
+          <DateIn
+            label="퇴직연금(DB/DC) 가입일"
+            value={a.rpJoin}
+            onChange={(v) => setAnn({ rpJoin: v })}
+            hint="회사가 퇴직연금 제도에 가입시킨 날. 입사일과 다를 수 있어요"
+          />
+        )}
+
+        <Row k="최초 수령 가능일" v={y.firstOK ? iso(y.firstOK) : "—"} sub={a.fromSeverance ? "만 55세 도달일" : "만 55세와 가입 5년 중 늦은 날"} />
+        <Row
+          k="가입일 판정 기준"
+          v={y.judge ? iso(y.judge) : "—"}
+          sub={y.bySeverance ? "퇴직연금 가입일로 소급 인정" : "계좌 개설일 기준"}
+          color={y.bySeverance ? C.f3 : C.dim}
+        />
+        <Row
+          k="기산연차"
+          v={y.base + "년차부터"}
+          color={y.base === 6 ? C.f3 : C.dim}
+          sub={y.base === 6 ? "2013.3.1 이전 가입 — 6년차에서 출발해요" : "2013.3.1 이후 가입"}
+        />
+        <Row k={tax.year + "년 연금수령연차"} v={y.started ? y.nth + "년차" : "개시 전"} strong color={C.f3} sub={y.startYear ? y.startYear + "년이 1년차" : "개시일을 입력하세요"} />
+        <Row k="퇴직소득세 감면율" v={y.cut + "%"} sub={y.cut === 30 ? "1~10년차" : y.cut === 40 ? "11~20년차" : "21년차 이상"} color={y.cut >= 40 ? C.ok : C.text} />
+        <Row k="감면율 상향 시점" v={y.y11 ? y.y11 + "년 · " + y.y21 + "년" : "—"} sub="11년차(40%) · 21년차(50%) 도달 연도" />
+
+        {y.delayed && (
+          <Note tone="warn">
+            입력한 개시예정일이 수령 요건 충족 전이에요. {iso(y.firstOK)} 이후에야 연금수령으로 인정돼서, 그 해를 1년차로 계산했어요.
+          </Note>
+        )}
+      </Card>
+
+      <Card title="연금수령한도" accent={C.f3} tag={y.noLimit ? "한도 없음" : y.started ? "11 − " + y.nth : "미개시"}>
+        <Num label="계좌 평가액" value={a.value} onChange={(v) => setAnn({ value: v })} hint="기준연도 초 잔액. 매년 다시 계산돼요" />
+        <Row k="연금수령연차" v={y.started ? y.nth + "년차" : "개시 전"} color={C.dim} sub={tax.year + "년 기준"} />
+        <Row
+          k="연간 수령한도"
+          v={!y.started ? "—" : y.noLimit ? "한도 없음" : won(y.limit)}
+          strong
+          color={y.noLimit ? C.ok : C.f3}
+          sub={!y.started ? "개시일을 입력하세요" : y.noLimit ? "11년차부터는 한도가 사라져요" : "평가액 ÷ (11 − " + y.nth + ") × 120%"}
+        />
+        <Row k="월 환산" v={!y.started || y.noLimit ? "—" : won(y.limit / 12)} sub={y.noLimit ? "" : "이 금액까지는 낮은 세율로 받아요"} />
+        <Note>
+          한도를 넘겨 찾은 금액은 연금 외 수령으로 봐서, 퇴직급여 재원은 감면 없이 퇴직소득세를, 세액공제받은 재원은 기타소득세 16.5%를 내요.
+        </Note>
+        <Note>계좌가 여러 개면 연차와 한도가 계좌마다 따로 가요. 하나씩 바꿔 넣어 확인하세요.</Note>
+      </Card>
+
+      <HelpBar onAsk={onAsk} placeholder="예: 연금수령한도가 뭐예요?" />
+    </div>
+  );
+}
+
+/* ── 앱 셸 ───────────────────────────────────────────────── */
+const TABS = [
+  { id: "np", label: "국민연금", Icon: Landmark, color: C.f1 },
+  { id: "rp", label: "퇴직연금", Icon: Building2, color: C.f2 },
+  { id: "pp", label: "개인연금", Icon: PiggyBank, color: C.f3 },
+  { id: "plan", label: "연금컨설팅", Icon: Ruler, color: C.text },
+  { id: "tax", label: "퇴직소득세", Icon: Calculator, color: C.f2 },
+  { id: "yr", label: "연금수령", label2: "연차/한도", Icon: CalendarClock, color: C.f3 },
+  { id: "chat", label: "챗봇", Icon: MessageSquare, color: C.dim },
+];
+
+const INIT = {
+  np: { birth: "1985-04-12", income: "4000000", endDate: "2045-12-31", endBasis: "age60", paidMonths: "150", paidAmount: "48000000", aValue: "3193511", cap: "6590000", floor: "410000", growth: "3.92", bValue: "", pastAvg: "" },
+  rp: { type: "DB", join: "2013-03-02", retire: "2045-12-31", salary: "5200000", bonus: "6000000", curSalary: "5200000", salaryGrowth: "3", curAnnual: "72000000", endAnnual: "110000000", curBalance: "60000000", rate: "3.5", payYears: "10", payRate: "3" },
+  pp: {
+    join: "2019-05-10", start: "2046-01-01", payYears: "20",
+    balance: "24000000", yearly: "6000000",
+    rate: "4", payRate: "3",
+  },
+  app: { today: iso(TODAY) },
+  plan: { retireAge: "60", need: "3000000" },
+  tax: {
+    startDate: "2013-03-02", endDate: "2045-12-31", pay: "180000000", nontax: "0",
+    exclude: "0", add: "0", prepaid: "0", credit: "0", irpAmount: "180000000",
+    birth: "", year: String(TODAY.getFullYear()),
+    ann: { open: "2019-05-10", start: "2046-01-01", value: "150000000", fromSeverance: true, rpJoin: "2012-01-01" },
+  },
+};
+
+
+/* ── Supabase 연결 ───────────────────────────────────────── */
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const api = {
+  async login(empNo, pw) {
+    const { data, error } = await supabase.rpc("fn_login", { p_emp: empNo, p_pw: pw });
+    return error ? { ok: false, error: "NETWORK" } : data;
+  },
+  async changePw(empNo, oldPw, newPw) {
+    const { data, error } = await supabase.rpc("fn_change_pw", { p_emp: empNo, p_old: oldPw, p_new: newPw });
+    return error ? { ok: false, error: "NETWORK" } : data;
+  },
+  async getNp() {
+    const { data } = await supabase.rpc("fn_get_np");
+    return data || null;
+  },
+  async adminUsers(adminPw) {
+    const { data, error } = await supabase.rpc("fn_admin_users", { p_admin_pw: adminPw });
+    if (error) return null;
+    return data.map((u) => ({
+      empNo: u.emp_id,
+      active: u.is_active,
+      isDefaultPw: u.is_default_pw,
+      logins: u.login_count,
+      lastLogin: u.last_login ? new Date(u.last_login).getTime() : null,
+      never: u.login_count === 0,
+    }));
+  },
+  async setActive(adminPw, empNo, active) {
+    const { error } = await supabase.rpc("fn_admin_set_active", { p_admin_pw: adminPw, p_emp: empNo, p_active: active });
+    return !error;
+  },
+  async resetPw(adminPw, empNo) {
+    const { error } = await supabase.rpc("fn_admin_reset_pw", { p_admin_pw: adminPw, p_emp: empNo });
+    return !error;
+  },
+  async saveNp(adminPw, value) {
+    const { error } = await supabase.rpc("fn_admin_save_np", { p_admin_pw: adminPw, p_value: value });
+    return !error;
+  },
+};
+
+const NP_DEFAULTS = { aValue: "3193511", cap: "6590000", floor: "410000", growth: "3.92" };
+
+const stamp = (t) => {
+  if (!t) return "—";
+  const d = new Date(t);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") +
+    " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+};
+
+/* ── 로그인 화면 ─────────────────────────────────────────── */
+function Login({ onUser, onAdmin }) {
+  const [empNo, setEmpNo] = useState("");
+  const [pw, setPw] = useState("");
+  const [adminPw, setAdminPw] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const signIn = async () => {
+    const id = empNo.trim();
+    if (!id) { setErr("사번을 입력하세요."); return; }
+    setBusy(true); setErr("");
+    const res = await api.login(id, pw);
+    setBusy(false);
+    if (!res || !res.ok) {
+      setErr(
+        !res ? "연결에 실패했어요." :
+        res.error === "NO_USER" ? "등록되지 않은 사번이에요. 관리자에게 문의하세요." :
+        res.error === "INACTIVE" ? "비활성화된 계정이에요. 관리자에게 문의하세요." :
+        res.error === "NETWORK" ? "연결에 실패했어요. 잠시 뒤 다시 시도해 주세요." :
+        "비밀번호가 맞지 않아요."
+      );
+      return;
+    }
+    onUser({ empNo: res.empNo, isDefaultPw: res.isDefaultPw, logins: res.logins });
+  };
+
+  const signInAdmin = async () => {
+    setBusy(true); setErr("");
+    const rows = await api.adminUsers(adminPw);
+    setBusy(false);
+    if (!rows) { setErr("관리자 비밀번호가 맞지 않아요."); return; }
+    onAdmin(adminPw, rows);
+  };
+
+  return (
+    <div className="px-6 py-10">
+      <div className="mb-8">
+        <div className="text-[10px] tracking-[0.35em]" style={{ color: C.dim, fontFamily: FONT_NUM }}>PENSION CONSULTING</div>
+        <h1 className="text-[26px] font-semibold leading-tight mt-1" style={{ color: C.text }}>3층 연금 설계</h1>
+        <p className="text-[12.5px] mt-2" style={{ color: C.dim }}>사번으로 로그인하세요. 첫 로그인 비밀번호는 0000이에요.</p>
+      </div>
+
+      <Card accent={C.f1} title="사용자 로그인">
+        <Field label="사번">
+          <input
+            className="w-full rounded-lg px-3 py-2.5 text-[15px] outline-none"
+            style={{ ...inputStyle, textAlign: "left" }}
+            value={empNo}
+            placeholder="예: 24176"
+            onChange={(e) => setEmpNo(e.target.value.replace(/[^0-9a-zA-Z]/g, ""))}
+            onKeyDown={(e) => e.key === "Enter" && signIn()}
+          />
+        </Field>
+        <Field label="비밀번호">
+          <input
+            type="password"
+            className="w-full rounded-lg px-3 py-2.5 text-[15px] outline-none"
+            style={{ ...inputStyle, textAlign: "left" }}
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && signIn()}
+          />
+        </Field>
+        <button onClick={signIn} disabled={busy}
+          className="w-full py-2.5 rounded-lg text-[14px] font-medium mt-1"
+          style={{ background: C.f1, color: "#fff", opacity: busy ? 0.6 : 1 }}>
+          {busy ? "확인 중…" : "로그인"}
+        </button>
+      </Card>
+
+      <Card accent={C.dim} title="관리자 로그인">
+        <Field label="관리자 비밀번호">
+          <input
+            type="password"
+            className="w-full rounded-lg px-3 py-2.5 text-[15px] outline-none"
+            style={{ ...inputStyle, textAlign: "left" }}
+            value={adminPw}
+            onChange={(e) => setAdminPw(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && signInAdmin()}
+          />
+        </Field>
+        <button onClick={signInAdmin} disabled={busy}
+          className="w-full py-2.5 rounded-lg text-[14px] font-medium"
+          style={{ border: "1px solid " + C.line2, color: C.text }}>
+          관리자 페이지 열기
+        </button>
+      </Card>
+
+      {err && (
+        <div className="rounded-xl px-3.5 py-3 text-[12.5px] flex gap-2" style={{ background: "rgba(217,45,69,0.07)", color: C.warn }}>
+          <AlertTriangle size={14} className="shrink-0 mt-0.5" /> {err}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── 비밀번호 변경 ───────────────────────────────────────── */
+function PasswordCard({ user, onDone }) {
+  const [cur, setCur] = useState("");
+  const [next, setNext] = useState("");
+  const [msg, setMsg] = useState("");
+
+  const save = async () => {
+    const res = await api.changePw(user.empNo, cur, next);
+    if (!res.ok) {
+      setMsg(res.error === "TOO_SHORT" ? "새 비밀번호는 4자 이상으로 해주세요." : "현재 비밀번호가 맞지 않아요.");
+      return;
+    }
+    setMsg("");
+    onDone({ ...user, isDefaultPw: next === "0000" });
+  };
+
+  return (
+    <Card accent={C.f1} title="비밀번호 변경">
+      <Field label="현재 비밀번호">
+        <input type="password" className="w-full rounded-lg px-3 py-2.5 text-[15px] outline-none"
+          style={{ ...inputStyle, textAlign: "left" }} value={cur} onChange={(e) => setCur(e.target.value)} />
+      </Field>
+      <Field label="새 비밀번호">
+        <input type="password" className="w-full rounded-lg px-3 py-2.5 text-[15px] outline-none"
+          style={{ ...inputStyle, textAlign: "left" }} value={next} onChange={(e) => setNext(e.target.value)} />
+      </Field>
+      {msg && <div className="text-[12px] mb-2" style={{ color: C.warn }}>{msg}</div>}
+      <button onClick={save} className="w-full py-2.5 rounded-lg text-[14px] font-medium" style={{ background: C.f1, color: "#fff" }}>
+        변경하기
+      </button>
+    </Card>
+  );
+}
+
+/* ── 관리자 페이지 ───────────────────────────────────────── */
+function AdminScreen({ adminPw, initialRows, onExit }) {
+  const [rows, setRows] = useState(initialRows || null);
+  const [cfg, setCfg] = useState(NP_DEFAULTS);
+  const [msg, setMsg] = useState("");
+  const [q, setQ] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      const c = await api.getNp();
+      if (c) setCfg({ ...NP_DEFAULTS, ...c });
+      if (!initialRows) setRows(await api.adminUsers(adminPw));
+    })();
+  }, []);
+
+  const update = async (u, patch) => {
+    const ok = "active" in patch
+      ? await api.setActive(adminPw, u.empNo, patch.active)
+      : await api.resetPw(adminPw, u.empNo);
+    if (ok) setRows((r) => r.map((x) => (x.empNo === u.empNo ? { ...x, ...patch } : x)));
+  };
+
+  const saveCfg = async () => {
+    const ok = await api.saveNp(adminPw, cfg);
+    setMsg(ok ? "저장했어요. 사용자 화면에 바로 반영됩니다." : "저장에 실패했어요.");
+    setTimeout(() => setMsg(""), 3000);
+  };
+
+  const total = rows ? rows.length : 0;
+  const active = rows ? rows.filter((r) => r.active).length : 0;
+  const joined = rows ? rows.filter((r) => !r.never).length : 0;
+  const logins = rows ? rows.reduce((a, r) => a + (r.logins || 0), 0) : 0;
+  const ranked = (rows || []).filter((r) => (r.logins || 0) > 0).sort((a, b) => b.logins - a.logins);
+  const maxLogin = Math.max(1, ...ranked.map((r) => r.logins));
+  const shown = (rows || []).filter((r) => !q || r.empNo.includes(q.trim()));
+
+  return (
+    <div className="px-5 py-5" style={{ paddingBottom: 40 }}>
+      <header className="flex items-start justify-between mb-4 pb-3" style={{ borderBottom: "1px dashed " + C.line2 }}>
+        <div>
+          <div className="text-[10px] tracking-[0.25em]" style={{ color: C.dim, fontFamily: FONT_NUM }}>ADMIN</div>
+          <h2 className="text-[21px] font-semibold leading-tight" style={{ color: C.text }}>관리자 페이지</h2>
+        </div>
+        <button onClick={onExit} className="text-[12px] px-3 py-1.5 rounded-lg" style={{ border: "1px solid " + C.line2, color: C.text }}>
+          나가기
+        </button>
+      </header>
+
+      <Card title="사용 현황" accent={C.f1}>
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          {[["등록 사번", total], ["접속 경험", joined], ["누적 로그인", logins]].map(([k, v]) => (
+            <div key={k} className="rounded-xl px-3 py-2.5" style={{ background: C.panel2 }}>
+              <div className="text-[10.5px]" style={{ color: C.dim }}>{k}</div>
+              <div className="text-[19px] font-semibold" style={{ color: C.text }}>{v}</div>
+            </div>
+          ))}
+        </div>
+        <div className="flex items-baseline justify-between mb-2">
+          <span className="text-[11px]" style={{ color: C.dim }}>사번별 로그인 횟수</span>
+          <span className="text-[10.5px]" style={{ color: C.faint }}>{ranked.length ? "상위 " + Math.min(12, ranked.length) + "명" : ""}</span>
+        </div>
+        {ranked.length === 0 && <div className="text-[12px] py-2" style={{ color: C.dim }}>아직 로그인 기록이 없어요.</div>}
+        {ranked.slice(0, 12).map((u) => (
+          <div key={u.empNo} className="flex items-center gap-2 mb-1.5">
+            <span className="text-[11.5px] w-12 shrink-0" style={{ color: C.dim, fontFamily: FONT_NUM }}>{u.empNo}</span>
+            <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "rgba(21,44,82,0.07)" }}>
+              <div style={{ width: (u.logins / maxLogin) * 100 + "%", height: "100%", background: u.active ? C.f1 : C.dim }} />
+            </div>
+            <span className="text-[11.5px] w-8 text-right" style={{ color: C.text }}>{u.logins}</span>
+          </div>
+        ))}
+      </Card>
+
+      <Card title="국민연금 가정값" accent={C.f1} tag="전체 적용">
+        <Num label="A값 (전체 가입자 평균소득월액)" value={cfg.aValue} onChange={(v) => setCfg({ ...cfg, aValue: v })} />
+        <div className="grid grid-cols-2 gap-3">
+          <Num label="기준소득월액 상한" value={cfg.cap} onChange={(v) => setCfg({ ...cfg, cap: v })} />
+          <Num label="기준소득월액 하한" value={cfg.floor} onChange={(v) => setCfg({ ...cfg, floor: v })} />
+        </div>
+        <Rate label="예상 소득상승률 (연)" value={cfg.growth} onChange={(v) => setCfg({ ...cfg, growth: v })} hint="공단 조회값과 대조할 때 쓰는 값이에요" />
+        <button onClick={saveCfg} className="w-full py-2.5 rounded-lg text-[14px] font-medium mt-1" style={{ background: C.f1, color: "#fff" }}>
+          저장
+        </button>
+        {msg && <div className="text-[12px] mt-2" style={{ color: C.ok }}>{msg}</div>}
+        <Note>매년 7월 고시된 값으로 갱신하면 모든 사용자 화면에 함께 반영돼요.</Note>
+      </Card>
+
+      <Card title="계정 관리" accent={C.f2} tag={active + " / " + total + "명 활성"}>
+        <input
+          className="w-full rounded-lg px-3 py-2 text-[13px] outline-none mb-3"
+          style={{ ...inputStyle, textAlign: "left" }}
+          placeholder="사번 검색"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        {rows === null && <div className="text-[12.5px] py-3" style={{ color: C.dim }}>불러오는 중…</div>}
+        {rows !== null && shown.length === 0 && <div className="text-[12.5px] py-3" style={{ color: C.dim }}>검색 결과가 없어요.</div>}
+        {shown.map((u) => (
+          <div key={u.empNo} className="py-3" style={{ borderTop: "1px solid " + C.line }}>
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[15px] font-medium" style={{ color: C.text, fontFamily: FONT_NUM }}>{u.empNo}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full"
+                  style={{ color: u.active ? C.ok : C.warn, border: "1px solid " + (u.active ? C.ok : C.warn) + "66" }}>
+                  {u.active ? "활성" : "비활성"}
+                </span>
+                {u.never && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ color: C.dim, border: "1px solid " + C.line2 }}>미접속</span>}
+                {!u.never && u.isDefaultPw && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ color: C.f3, border: "1px solid " + C.f3 + "66" }}>초기 비번</span>}
+              </div>
+              <span className="text-[11px]" style={{ color: C.dim }}>로그인 {u.logins || 0}회</span>
+            </div>
+            <div className="text-[11px] mb-2" style={{ color: C.faint }}>마지막 접속 {stamp(u.lastLogin)}</div>
+            <div className="flex gap-2">
+              <button onClick={() => update(u, { active: !u.active })} className="flex-1 py-1.5 rounded-lg text-[12px]"
+                style={{ border: "1px solid " + (u.active ? C.warn : C.ok), color: u.active ? C.warn : C.ok }}>
+                {u.active ? "비활성화" : "활성화"}
+              </button>
+              <button onClick={() => update(u, { isDefaultPw: true })} className="flex-1 py-1.5 rounded-lg text-[12px]"
+                style={{ border: "1px solid " + C.line2, color: C.text }}>
+                비밀번호 초기화
+              </button>
+            </div>
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+}
+
+/* ── 앱 ──────────────────────────────────────────────────── */
+function PensionConsulting() {
+  const [auth, setAuth] = useState(null);
+  const [tab, setTab] = useState("np");
+  const [st, setSt] = useState(INIT);
+  const [chatLog, setChatLog] = useState([]);
+  const [pending, setPending] = useState(null);
+  const [showPw, setShowPw] = useState(false);
+  const scrollRef = useRef(null);
+
+  const patch = (key) => (v) => setSt((s) => ({ ...s, [key]: { ...s[key], ...v } }));
+  const patchAnn = (v) => setSt((s) => ({ ...s, tax: { ...s.tax, ann: { ...s.tax.ann, ...v } } }));
+  const ask = (q) => { setPending(q); setTab("chat"); };
+
+  NOW = D(st.app.today) || TODAY;
+
+  useEffect(() => {
+    if (!auth || auth.type !== "user") return;
+    (async () => {
+      const c = await api.getNp();
+      if (c) setSt((x) => ({ ...x, np: { ...x.np, ...c } }));
+    })();
+  }, [auth]);
+
+  useEffect(() => { scrollRef.current?.scrollTo({ top: 0 }); }, [tab]);
+
+  const shell = (children) => (
+    <div className="w-full min-h-screen flex justify-center" style={{ background: "#E9EDF4", fontFamily: FONT_UI }}>
+      <div className="w-full max-w-md flex flex-col relative" style={{ background: C.ink, minHeight: "100vh" }}>
+        {children}
+      </div>
+    </div>
+  );
+
+  if (!auth) {
+    return shell(
+      <Login
+        onUser={(u) => { setAuth({ type: "user", user: u }); setShowPw(!!u.isDefaultPw); setTab("np"); }}
+        onAdmin={(pw, rows) => setAuth({ type: "admin", pw, rows })}
+      />
+    );
+  }
+
+  if (auth.type === "admin") {
+    return shell(<AdminScreen adminPw={auth.pw} initialRows={auth.rows} onExit={() => setAuth(null)} />);
+  }
+
+  const me = auth.user;
+
+  return shell(
+    <>
+      <header className="relative px-5 pt-6 pb-3 flex items-baseline justify-between" style={{ borderBottom: "1px solid " + C.line }}>
+        <div>
+          <div className="text-[10px] tracking-[0.35em]" style={{ color: C.dim, fontFamily: FONT_NUM }}>PENSION CONSULTING</div>
+          <h1 className="text-[22px] font-semibold leading-tight mt-0.5" style={{ color: C.text }}>3층 연금 설계</h1>
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <span className="text-[11px]" style={{ color: C.dim, fontFamily: FONT_NUM }}>{me.empNo}</span>
+          <div className="flex gap-2">
+            <button onClick={() => setShowPw(!showPw)} className="text-[11px]" style={{ color: C.dim }}>비밀번호</button>
+            <button onClick={() => { setAuth(null); setSt(INIT); setChatLog([]); setShowPw(false); }} className="text-[11px]" style={{ color: C.dim }}>로그아웃</button>
+          </div>
+        </div>
+      </header>
+
+      <div className="relative px-5 py-2 flex items-center gap-2" style={{ borderBottom: "1px solid " + C.line, background: C.panel }}>
+        <span className="text-[11px] shrink-0" style={{ color: C.dim }}>기준일</span>
+        <MiniDate value={st.app.today} onChange={(v) => setSt((x) => ({ ...x, app: { ...x.app, today: v } }))} />
+        <button onClick={() => setSt((x) => ({ ...INIT, app: x.app }))} className="ml-auto flex items-center gap-1 text-[11px] shrink-0" style={{ color: C.dim }}>
+          <RotateCcw size={11} /> 예시값
+        </button>
+      </div>
+
+      <main ref={scrollRef} className="relative flex-1 overflow-y-auto px-5 py-5" style={{ paddingBottom: 96 }}>
+        {showPw && (
+          <>
+            {me.isDefaultPw && (
+              <div className="rounded-xl px-3.5 py-3 mb-4 text-[12.5px] flex gap-2" style={{ background: "rgba(180,116,7,0.08)", color: C.f3 }}>
+                <AlertTriangle size={14} className="shrink-0 mt-0.5" /> 초기 비밀번호를 쓰고 있어요. 새 비밀번호로 바꿔 주세요.
+              </div>
+            )}
+            <PasswordCard user={me} onDone={(u) => { setAuth({ type: "user", user: u }); setShowPw(false); }} />
+          </>
+        )}
+        {tab === "np" && <ScreenNP np={st.np} set={patch("np")} onAsk={ask} />}
+        {tab === "rp" && <ScreenRP rp={st.rp} set={patch("rp")} onAsk={ask} />}
+        {tab === "pp" && <ScreenPP pp={st.pp} set={patch("pp")} onAsk={ask} />}
+        {tab === "plan" && <ScreenPlan st={st} set={patch("plan")} onAsk={ask} />}
+        {tab === "tax" && <ScreenTax tax={st.tax} set={patch("tax")} rp={st.rp} onAsk={ask} />}
+        {tab === "yr" && <ScreenAnnuity tax={st.tax} set={patch("tax")} setAnn={patchAnn} np={st.np} onAsk={ask} />}
+        {tab === "chat" && <ScreenChat log={chatLog} setLog={setChatLog} pending={pending} clearPending={() => setPending(null)} />}
+      </main>
+
+      <nav className="fixed bottom-0 w-full max-w-md flex" style={{ background: "rgba(255,255,255,0.93)", borderTop: "1px solid " + C.line, backdropFilter: "blur(8px)" }}>
+        {TABS.map((t) => {
+          const on = tab === t.id;
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)} className="flex-1 flex flex-col items-center gap-1 py-2.5"
+              style={{ borderTop: on ? "2px solid " + t.color : "2px solid transparent", marginTop: -1 }}>
+              <t.Icon size={16} color={on ? t.color : C.dim} strokeWidth={on ? 2.2 : 1.6} />
+              <span className="flex flex-col items-center leading-tight text-center" style={{ fontSize: 9, color: on ? t.color : C.dim }}>
+                <span>{t.label}</span>
+                {t.label2 && <span>{t.label2}</span>}
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+    </>
+  );
+}
+
+createRoot(document.getElementById("root")).render(<PensionConsulting />);
+
+</script>
+</body>
+</html>
