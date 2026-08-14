@@ -1542,7 +1542,8 @@ const api = {
       role: u.role || "sales",
       dept: u.dept || "미지정",
       title: u.title || "",
-    })).sort((a, b) => a.empNo.localeCompare(b.empNo));
+      sortNo: u.sort_no == null ? 9999 : u.sort_no,
+    })).sort((a, b) => a.sortNo - b.sortNo || a.empNo.localeCompare(b.empNo));
   },
   async usage(adminPw, month) {
     const { data, error } = await supabase.rpc("fn_admin_usage", { p_admin_pw: adminPw, p_month: month });
@@ -1565,7 +1566,7 @@ const api = {
   },
 };
 
-const BUILD = "2026-08-14 · 부서/분류";
+const BUILD = "2026-08-14 · 명부순서";
 
 const NP_DEFAULTS = { aValue: "3193511", cap: "6590000", floor: "410000", growth: "3.92" };
 
