@@ -1567,6 +1567,8 @@ const api = {
   },
 };
 
+const BUILD = "2026-08-14 · 부서/분류";
+
 const NP_DEFAULTS = { aValue: "3193511", cap: "6590000", floor: "410000", growth: "3.92" };
 
 const monthKey = (d) => new Date(d).toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 7);
@@ -1833,6 +1835,7 @@ function AdminScreen({ adminPw, initialRows, onExit }) {
         <div>
           <div className="text-[10px] tracking-[0.25em]" style={{ color: C.dim, fontFamily: FONT_NUM }}>ADMIN</div>
           <h2 className="text-[21px] font-semibold leading-tight" style={{ color: C.text }}>관리자 페이지</h2>
+          <div className="text-[10px] mt-0.5" style={{ color: C.faint, fontFamily: FONT_NUM }}>{BUILD}</div>
         </div>
         <button onClick={onExit} className="text-[12px] px-3 py-1.5 rounded-lg" style={{ border: "1px solid " + C.line2, color: C.text }}>
           나가기
