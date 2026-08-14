@@ -27,6 +27,7 @@
   }
 }
 </script>
+<script src="config.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
 </head>
 <body>
@@ -41,13 +42,10 @@ import {
   HelpCircle, Send, RotateCcw, AlertTriangle, Check, Info, Calculator, CalendarClock, CalendarDays, ChevronDown,
 } from "lucide-react";
 
-/* ═══════════════════════════════════════════════════════════
-   ↓↓↓ 이 두 줄만 바꾸면 됩니다 ↓↓↓
-   Supabase → Settings → API Keys 에서 복사하세요.
-   ═══════════════════════════════════════════════════════════ */
-const SUPABASE_URL = "https://여기에-프로젝트-주소.supabase.co";
-const SUPABASE_KEY = "sb_publishable_여기에-키";
-/* ═══════════════════════════════════════════════════════════ */
+/* 접속 정보는 config.js 에서 읽어옵니다.
+   앱을 새로 올려도 config.js 는 건드리지 마세요. */
+const SUPABASE_URL = window.SUPABASE_URL;
+const SUPABASE_KEY = window.SUPABASE_KEY;
 
 
 /* ────────────────────────────────────────────────────────────
@@ -2081,7 +2079,14 @@ function PensionConsulting() {
   );
 }
 
-createRoot(document.getElementById("root")).render(<PensionConsulting />);
+if (!SUPABASE_URL || !SUPABASE_KEY || SUPABASE_URL.includes("여기에")) {
+  document.getElementById("root").innerHTML =
+    '<div style="font-family:system-ui;padding:40px 24px;color:#16233A;line-height:1.7">' +
+    '<b>config.js 를 설정해 주세요.</b><br><br>' +
+    '저장소에 config.js 파일이 없거나, 안의 주소와 키가 채워지지 않았어요.</div>';
+} else {
+  createRoot(document.getElementById("root")).render(<PensionConsulting />);
+}
 
 </script>
 </body>
