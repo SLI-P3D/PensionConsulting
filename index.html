@@ -101,7 +101,8 @@ const D = (s) => {
   const d = new Date(s + "T00:00:00");
   return isNaN(d.getTime()) ? null : d;
 };
-const iso = (d) => d.toISOString().slice(0, 10);
+const iso = (d) =>
+  d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 const daysBetween = (a, b) => Math.round((b - a) / 86400000);
 // 달력 기준 연수 — 응당일이면 정확히 정수로 떨어짐 (윤년 오차 없음)
 const yearsBetween = (a, b) => {
@@ -1450,7 +1451,7 @@ function ScreenAnnuity({ tax, set, setAnn, np, onAsk }) {
           color={y.base === 6 ? C.f3 : C.dim}
           sub={y.base === 6 ? "2013.3.1 이전 가입 — 6년차에서 출발해요" : "2013.3.1 이후 가입"}
         />
-        <Row k={tax.year + "년 연금수령연차"} v={y.started ? y.nth + "년차" : "개시 전"} strong color={C.f3} sub={y.startYear ? y.startYear + "년이 1년차" : "개시일을 입력하세요"} />
+        <Row k={tax.year + "년 연금수령연차"} v={y.started ? y.nth + "년차" : "개시 전"} strong color={C.f3} sub={y.startYear ? y.startYear + "년이 " + y.base + "년차" : "개시일을 입력하세요"} />
         <Row k="퇴직소득세 감면율" v={y.cut + "%"} sub={y.cut === 30 ? "1~10년차" : y.cut === 40 ? "11~20년차" : "21년차 이상"} color={y.cut >= 40 ? C.ok : C.text} />
         <Row k="감면율 상향 시점" v={y.y11 ? y.y11 + "년 · " + y.y21 + "년" : "—"} sub="11년차(40%) · 21년차(50%) 도달 연도" />
 
@@ -1566,7 +1567,7 @@ const api = {
   },
 };
 
-const BUILD = "2026-08-14 · 명부순서";
+const BUILD = "2026-08-14 · 날짜표기";
 
 const NP_DEFAULTS = { aValue: "3193511", cap: "6590000", floor: "410000", growth: "3.92" };
 
