@@ -1619,7 +1619,7 @@ const api = {
   },
 };
 
-const BUILD = "2026-08-14 · 세율설정";
+const BUILD = "2026-08-14 · 세율설정 b";
 
 const NP_DEFAULTS = { aValue: "3193511", cap: "6590000", floor: "410000", growth: "3.92" };
 
@@ -1975,6 +1975,66 @@ function AdminScreen({ adminPw, initialRows, onExit }) {
         </Note>
       </Card>
 
+      <Card title="계정 관리" accent={C.f2} tag={total + "명"}>
+        <input
+          className="w-full rounded-lg px-3 py-2 text-[13px] outline-none mb-3"
+          style={{ ...inputStyle, textAlign: "left" }}
+          placeholder="사번 또는 부서 검색"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        {rows === null && <div className="text-[12.5px] py-3" style={{ color: C.dim }}>불러오는 중…</div>}
+
+        {groups.map((g) => (
+          <div key={g.key} style={{ borderTop: "1px solid " + C.line }}>
+            <button
+              onClick={() => setOpen((o) => ({ ...o, [g.key]: !o[g.key] }))}
+              className="w-full flex items-center justify-between py-3"
+            >
+              <span className="flex items-center gap-2">
+                <ChevronDown size={15} color={C.dim} style={{ transform: open[g.key] ? "none" : "rotate(-90deg)", transition: "transform 150ms" }} />
+                <span className="text-[14px] font-medium" style={{ color: C.text }}>{g.label}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full"
+                  style={{ color: g.key === "sales" ? C.f1 : C.dim, border: "1px solid " + (g.key === "sales" ? C.f1 : C.line2) + "66" }}>
+                  {g.key === "sales" ? "측정 대상" : "측정 제외"}
+                </span>
+              </span>
+              <span className="text-[12px]" style={{ color: C.dim }}>{g.list.length}명</span>
+            </button>
+
+            {open[g.key] && g.list.map((u) => (
+              <div key={u.empNo} className="py-3 pl-2" style={{ borderTop: "1px solid " + C.line }}>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[15px] font-medium" style={{ color: C.text, fontFamily: FONT_NUM }}>{u.empNo}</span>
+                    <span className="text-[11.5px]" style={{ color: C.dim }}>{u.dept} · {u.title}</span>
+                  </div>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full"
+                    style={{ color: u.active ? C.ok : C.warn, border: "1px solid " + (u.active ? C.ok : C.warn) + "66" }}>
+                    {u.active ? "활성" : "비활성"}
+                  </span>
+                </div>
+                <div className="text-[11px] mb-2" style={{ color: C.faint }}>
+                  {stamp(u.lastLogin)} · 로그인 {u.logins || 0}회{days ? " · " + month + " " + u.days + "일 사용" : ""}
+                  {u.never ? " · 미접속" : ""}{!u.never && u.isDefaultPw ? " · 초기 비번" : ""}
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => update(u, { active: !u.active })} className="flex-1 py-1.5 rounded-lg text-[12px]"
+                    style={{ border: "1px solid " + (u.active ? C.warn : C.ok), color: u.active ? C.warn : C.ok }}>
+                    {u.active ? "비활성화" : "활성화"}
+                  </button>
+                  <button onClick={() => update(u, { isDefaultPw: true })} className="flex-1 py-1.5 rounded-lg text-[12px]"
+                    style={{ border: "1px solid " + C.line2, color: C.text }}>
+                    비밀번호 초기화
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </Card>
+      </>)}
+
       {page === "np" && (
       <Card title="국민연금 가정값" accent={C.f1} tag="전체 적용">
         <Num label="A값 (전체 가입자 평균소득월액)" value={cfg.aValue} onChange={(v) => setCfg({ ...cfg, aValue: v })} />
@@ -2055,65 +2115,6 @@ function AdminScreen({ adminPw, initialRows, onExit }) {
       </>
       )}
 
-      <Card title="계정 관리" accent={C.f2} tag={total + "명"}>
-        <input
-          className="w-full rounded-lg px-3 py-2 text-[13px] outline-none mb-3"
-          style={{ ...inputStyle, textAlign: "left" }}
-          placeholder="사번 또는 부서 검색"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        {rows === null && <div className="text-[12.5px] py-3" style={{ color: C.dim }}>불러오는 중…</div>}
-
-        {groups.map((g) => (
-          <div key={g.key} style={{ borderTop: "1px solid " + C.line }}>
-            <button
-              onClick={() => setOpen((o) => ({ ...o, [g.key]: !o[g.key] }))}
-              className="w-full flex items-center justify-between py-3"
-            >
-              <span className="flex items-center gap-2">
-                <ChevronDown size={15} color={C.dim} style={{ transform: open[g.key] ? "none" : "rotate(-90deg)", transition: "transform 150ms" }} />
-                <span className="text-[14px] font-medium" style={{ color: C.text }}>{g.label}</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full"
-                  style={{ color: g.key === "sales" ? C.f1 : C.dim, border: "1px solid " + (g.key === "sales" ? C.f1 : C.line2) + "66" }}>
-                  {g.key === "sales" ? "측정 대상" : "측정 제외"}
-                </span>
-              </span>
-              <span className="text-[12px]" style={{ color: C.dim }}>{g.list.length}명</span>
-            </button>
-
-            {open[g.key] && g.list.map((u) => (
-              <div key={u.empNo} className="py-3 pl-2" style={{ borderTop: "1px solid " + C.line }}>
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[15px] font-medium" style={{ color: C.text, fontFamily: FONT_NUM }}>{u.empNo}</span>
-                    <span className="text-[11.5px]" style={{ color: C.dim }}>{u.dept} · {u.title}</span>
-                  </div>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full"
-                    style={{ color: u.active ? C.ok : C.warn, border: "1px solid " + (u.active ? C.ok : C.warn) + "66" }}>
-                    {u.active ? "활성" : "비활성"}
-                  </span>
-                </div>
-                <div className="text-[11px] mb-2" style={{ color: C.faint }}>
-                  {stamp(u.lastLogin)} · 로그인 {u.logins || 0}회{days ? " · " + month + " " + u.days + "일 사용" : ""}
-                  {u.never ? " · 미접속" : ""}{!u.never && u.isDefaultPw ? " · 초기 비번" : ""}
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => update(u, { active: !u.active })} className="flex-1 py-1.5 rounded-lg text-[12px]"
-                    style={{ border: "1px solid " + (u.active ? C.warn : C.ok), color: u.active ? C.warn : C.ok }}>
-                    {u.active ? "비활성화" : "활성화"}
-                  </button>
-                  <button onClick={() => update(u, { isDefaultPw: true })} className="flex-1 py-1.5 rounded-lg text-[12px]"
-                    style={{ border: "1px solid " + C.line2, color: C.text }}>
-                    비밀번호 초기화
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        ))}
-      </Card>
-      </>)}
     </div>
   );
 }
