@@ -987,55 +987,97 @@ function ScreenPP({ pp, set, onAsk }) {
 }
 
 /* ── 시그니처: 연금 입면도 ────────────────────────────────── */
-function Building({ floors, need }) {
-  const total = floors.reduce((s, f) => s + f.amount, 0);
-  const top = Math.max(total, need) * 1.18 || 1;
-  const H = 210;
-  const px = (v) => Math.max(v > 0 ? 26 : 0, (v / top) * H);
-  const needY = (need / top) * H;
+function Timeline({ streams, segs, need, minAge, maxAge }) {
+  const span = Math.max(1, maxAge - minAge);
+  const pos = (a) => ((Math.min(maxAge, Math.max(minAge, a)) - minAge) / span) * 100;
+  const ticks = [];
+  for (let a = Math.ceil(minAge / 5) * 5; a < maxAge; a += 5) ticks.push(a);
+
+  const peak = Math.max(need, ...segs.map((g) => g.sum), 1);
+  const rows = streams.filter((s) => s.monthly > 0).sort((a, b) => b.n - a.n);
+  const LEFT = 46, RIGHT = 58;
 
   return (
-    <div className="relative pt-2" style={{ paddingRight: 8 }}>
-      <div className="relative" style={{ height: H + 26 }}>
-        {/* 필요생활비 기준선 */}
-        <div className="absolute left-0 right-0 flex items-center" style={{ bottom: needY + 26, zIndex: 3 }}>
-          <div className="flex-1" style={{ borderTop: "1px dashed " + C.warn }} />
-          <span className="text-[10px] pl-2 whitespace-nowrap" style={{ color: C.warn, fontFamily: FONT_NUM }}>
-            필요 {big(need)}
-          </span>
-        </div>
-        {/* 층 */}
-        <div className="absolute left-0 right-0 bottom-0 flex flex-col justify-end" style={{ height: H + 26 }}>
-          <div className="flex flex-col">
-            {floors.map((f) => (
+    <div>
+      {/* 층별 수령 구간 */}
+      {rows.map((s) => {
+        const left = pos(s.start), width = Math.max(3, pos(s.end) - pos(s.start));
+        const lifelong = s.end >= 200;
+        const years = Math.min(maxAge, s.end) - s.start;
+        const inner = (lifelong ? "종신" : Math.round(years) + "년") + " · 월 " + big(s.monthly);
+        const wide = width > 44;
+        return (
+          <div key={s.key} className="flex items-center mb-1.5">
+            <span className="text-[10.5px] shrink-0 leading-tight" style={{ width: LEFT, color: s.color }}>{s.label}</span>
+            <div className="relative flex-1 h-7">
+              <div className="absolute inset-0 rounded" style={{ background: "rgba(21,44,82,0.04)" }} />
+              {ticks.map((a) => (
+                <div key={a} className="absolute top-0 bottom-0" style={{ left: pos(a) + "%", width: 1, background: "rgba(21,44,82,0.07)" }} />
+              ))}
               <div
-                key={f.n}
-                className="relative flex items-center justify-between px-3"
-                style={{
-                  height: px(f.amount),
-                  background: f.amount > 0 ? f.color + "1a" : "transparent",
-                  borderTop: "1px solid " + f.color,
-                  borderLeft: "1px solid " + f.color + "66",
-                  borderRight: "1px solid " + f.color + "66",
-                  transition: "height 400ms ease",
-                }}
+                className="absolute top-0 bottom-0 rounded flex items-center justify-center px-1"
+                style={{ left: left + "%", width: width + "%", background: s.color + "24", border: "1px solid " + s.color + "7a", transition: "all 350ms ease" }}
               >
-                <span className="text-[11px]" style={{ color: f.color }}>
-                  <span style={{ fontFamily: FONT_NUM }}>{f.n}층</span> · {f.label}
-                </span>
-                <span className="text-[12px]" style={{ fontFamily: FONT_NUM, color: C.text }}>{won(f.amount)}</span>
+                {wide && <span className="text-[9.5px] whitespace-nowrap" style={{ color: s.color }}>{inner}</span>}
               </div>
-            ))}
+              {!wide && (
+                <span className="absolute text-[9.5px] whitespace-nowrap" style={{ left: "calc(" + (left + width) + "% + 3px)", top: 5, color: s.color }}>{inner}</span>
+              )}
+            </div>
+            <span className="text-[9.5px] shrink-0 text-right leading-tight" style={{ width: RIGHT, color: C.dim, fontFamily: FONT_NUM }}>
+              {lifelong ? "종신" : "총 " + big(s.monthly * 12 * years)}
+            </span>
           </div>
-          {/* 지반선 */}
-          <div style={{ height: 26, borderTop: "2px solid " + C.line2, background: "repeating-linear-gradient(115deg, rgba(21,44,82,0.18) 0 1px, transparent 1px 7px)" }} />
+        );
+      })}
+
+      {/* 합계 흐름 · 필요생활비 */}
+      <div className="flex items-stretch mt-2.5">
+        <span className="text-[10.5px] shrink-0 pt-9" style={{ width: LEFT, color: C.dim }}>합계</span>
+        <div className="relative flex-1" style={{ height: 78 }}>
+          <div className="absolute inset-0 flex items-end">
+            {segs.map((g, i) => {
+              const w = ((g.to - g.from) / span) * 100;
+              const h = (g.sum / peak) * 100;
+              const ok = g.sum >= need;
+              return (
+                <div key={i} className="relative" style={{ width: w + "%", height: "100%" }}>
+                  <div className="absolute bottom-0 left-0 right-0"
+                    style={{ height: h + "%", background: ok ? "rgba(18,134,74,0.18)" : "rgba(217,45,69,0.15)", borderTop: "2px solid " + (ok ? C.ok : C.warn), transition: "height 350ms ease" }} />
+                  <span className="absolute left-0 right-0 text-center text-[8.5px] whitespace-nowrap"
+                    style={{ bottom: "calc(" + h + "% + 3px)", color: ok ? C.ok : C.warn, fontFamily: FONT_NUM }}>
+                    {w > 13 ? big(g.sum) : ""}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          {need > 0 && (
+            <div className="absolute left-0 right-0" style={{ bottom: (need / peak) * 100 + "%", borderTop: "1px dashed " + C.warn }} />
+          )}
         </div>
+        <span className="text-[9.5px] shrink-0 text-right pt-9 leading-tight" style={{ width: RIGHT, color: C.warn }}>
+          필요<br />{big(need)}
+        </span>
+      </div>
+
+      {/* 나이 눈금 */}
+      <div className="flex items-start">
+        <span className="shrink-0" style={{ width: LEFT }} />
+        <div className="relative flex-1" style={{ height: 16, borderTop: "1px solid " + C.line2 }}>
+          <span className="absolute text-[9.5px]" style={{ left: 0, top: 2, color: C.dim, fontFamily: FONT_NUM }}>{Math.round(minAge)}세</span>
+          {ticks.filter((a) => a > minAge + 2).map((a) => (
+            <span key={a} className="absolute text-[9.5px]" style={{ left: pos(a) + "%", top: 2, color: C.dim, transform: "translateX(-50%)", fontFamily: FONT_NUM }}>
+              {a}
+            </span>
+          ))}
+        </div>
+        <span className="text-[9.5px] shrink-0 text-right" style={{ width: RIGHT, color: C.dim }}>{maxAge}세~</span>
       </div>
     </div>
   );
 }
 
-/* ── 화면 4 · 연금컨설팅 ──────────────────────────────────── */
 function ScreenPlan({ st, set, onAsk }) {
   const np = calcNP(st.np);
   const rp = calcRP(st.rp);
@@ -1069,13 +1111,10 @@ function ScreenPlan({ st, set, onAsk }) {
     segs.push({ from, to, parts, sum, rate: need > 0 ? sum / need : 0 });
   }
   const worst = segs.length ? segs.reduce((a, b) => (a.rate <= b.rate ? a : b)) : null;
-  const steady = segs.length ? segs.reduce((a, b) => (a.sum >= b.sum ? a : b)) : null;
+  const steady = segs.length ? segs.reduce((a, b) => (a.sum >= b.sum ? a : b)) : { from: retireAge, to: retireAge, sum: 0, parts: [] };
+  const minAge = retireAge;
+  const maxAge = 95;
 
-  const floors = [
-    { n: 3, label: "개인연금", color: C.f3, amount: (steady?.parts || []).filter((p) => p.n === 3).reduce((a, s) => a + s.monthly, 0) },
-    { n: 2, label: "퇴직연금", color: C.f2, amount: (steady?.parts || []).filter((p) => p.n === 2).reduce((a, s) => a + s.monthly, 0) },
-    { n: 1, label: "국민연금", color: C.f1, amount: (steady?.parts || []).filter((p) => p.n === 1).reduce((a, s) => a + s.monthly, 0) },
-  ];
 
   // 처방
   const tips = [];
@@ -1119,7 +1158,7 @@ function ScreenPlan({ st, set, onAsk }) {
 
   return (
     <div>
-      <ScreenHead eyebrow="STEP 4" title="연금 컨설팅" desc="1~3층을 쌓아 필요생활비 선에 닿는지 확인해요" color={C.text} />
+      <ScreenHead eyebrow="STEP 4" title="연금 컨설팅" desc="언제 얼마가 나오고, 필요생활비에 닿는지 한눈에 봐요" color={C.text} />
 
       <Card title="기본 정보" accent={C.text}>
         <div className="grid grid-cols-2 gap-3">
@@ -1128,53 +1167,35 @@ function ScreenPlan({ st, set, onAsk }) {
         </div>
       </Card>
 
-      <Card
-        title="층별 예상 월 수령액"
-        accent={C.f1}
-        tag={steady ? Math.round(steady.from) + "–" + Math.round(steady.to) + "세" : "—"}
-      >
-        <Building floors={floors} need={need} />
+      <Card title="수령 타임라인" accent={C.f1} tag={Math.round(minAge) + "세~"}>
+        <Timeline streams={streams} segs={segs} need={need} minAge={minAge} maxAge={maxAge} />
         <div className="mt-4">
-          {floors.slice().reverse().map((f) => (
+          {streams.filter((x) => x.monthly > 0).sort((a, b) => b.n - a.n).map((x) => (
             <Row
-              key={f.n}
-              k={f.n + "층 · " + f.label}
-              v={won(f.amount)}
-              color={f.amount > 0 ? f.color : C.dim}
-              sub={f.amount > 0 ? Math.round((f.amount / (steady?.sum || 1)) * 100) + "% 비중" : "이 구간엔 수령 없음"}
+              key={x.key}
+              k={x.n + "층 · " + x.label}
+              v={won(x.monthly)}
+              color={x.color}
+              sub={Math.round(x.start) + "세부터 " + (x.end >= 200 ? "종신 수령" : Math.round(x.end) + "세까지")}
             />
           ))}
-          <Row k="합계 월 수령액" v={won(steady?.sum || 0)} strong color={(steady?.sum || 0) >= need ? C.ok : C.warn} />
-          <Row k="필요생활비 대비" v={Math.round((steady?.rate || 0) * 100) + "%"} sub={(steady?.sum || 0) >= need ? "충족" : "부족 " + won(need - (steady?.sum || 0))} />
+          <Row
+            k={"최대 " + Math.round(steady.from) + "~" + Math.round(steady.to) + "세 합계"}
+            v={won(steady.sum)}
+            strong
+            color={steady.sum >= need ? C.ok : C.warn}
+            sub={steady.sum >= need ? "필요생활비 충족" : "부족 " + won(need - steady.sum)}
+          />
+          {worst && worst.sum < need && (
+            <Row
+              k={"최저 " + Math.round(worst.from) + "~" + Math.round(worst.to) + "세 합계"}
+              v={won(worst.sum)}
+              color={C.warn}
+              sub={"부족 " + won(need - worst.sum) + " · " + Math.round(worst.rate * 100) + "%"}
+            />
+          )}
         </div>
-        <Note>세 층이 가장 두껍게 겹치는 구간이에요. 빨간 점선이 필요생활비, 건물 높이가 실제 수령액이에요.</Note>
-      </Card>
-
-      <Card title="나이대별 수령 흐름" accent={C.f2}>
-        {segs.map((s, i) => {
-          const okk = s.sum >= need;
-          return (
-            <div key={i} className="py-2.5" style={{ borderTop: "1px solid " + C.line }}>
-              <div className="flex items-baseline justify-between mb-1.5">
-                <span className="text-[13px]" style={{ fontFamily: FONT_NUM, color: C.text }}>
-                  {Math.round(s.from)}–{Math.round(s.to)}세
-                </span>
-                <span className="text-[14px]" style={{ fontFamily: FONT_NUM, color: okk ? C.ok : C.warn }}>
-                  {won(s.sum)} {okk ? "" : "· " + Math.round(s.rate * 100) + "%"}
-                </span>
-              </div>
-              <div className="flex h-2 rounded-full overflow-hidden" style={{ background: "rgba(21,44,82,0.07)" }}>
-                {s.parts.map((p, j) => (
-                  <div key={j} style={{ width: (need > 0 ? Math.min(100, (p.monthly / need) * 100) : 0) + "%", background: p.color }} />
-                ))}
-              </div>
-              <div className="mt-1.5 text-[11px]" style={{ color: C.dim }}>
-                {s.parts.length ? s.parts.map((p) => p.label).join(" + ") : "수령 없음 — 소득 공백"}
-              </div>
-            </div>
-          );
-        })}
-        <Note>막대는 필요생활비를 100%로 본 비율이에요. 색은 층 색과 같아요.</Note>
+        <Note>위쪽 막대는 각 층의 수령 구간, 아래 그래프는 그 시점의 합계예요. 빨간 점선이 필요생활비입니다.</Note>
       </Card>
 
       <Card title="처방" accent={worst && worst.sum < need ? C.warn : C.ok}>
@@ -1619,7 +1640,7 @@ const api = {
   },
 };
 
-const BUILD = "2026-08-14 · 세율설정 b";
+const BUILD = "2026-08-14 · 타임라인";
 
 const NP_DEFAULTS = { aValue: "3193511", cap: "6590000", floor: "410000", growth: "3.92" };
 
